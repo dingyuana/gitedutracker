@@ -6,9 +6,9 @@
       "work_id": "student-github-tracker-9bc13a79",
       "active_plan": "/data/disk/gitedutracker/.omo/plans/student-github-tracker.md",
       "plan_name": "student-github-tracker",
-      "status": "active",
+      "status": "completed",
       "started_at": "2026-08-21T06:33:47.237Z",
-      "updated_at": "2026-08-21T09:36:19.002Z",
+      "updated_at": "2026-08-21T09:38:17.160Z",
       "session_ids": [
         "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk"
       ],
@@ -53,13 +53,15 @@
           "ended_at": "2026-08-21T09:36:19.002Z",
           "elapsed_ms": 953791
         }
-      }
+      },
+      "ended_at": "2026-08-21T09:38:17.160Z",
+      "elapsed_ms": 11069923
     }
   },
   "active_plan": "/data/disk/gitedutracker/.omo/plans/student-github-tracker.md",
   "started_at": "2026-08-21T06:33:47.237Z",
-  "status": "active",
-  "updated_at": "2026-08-21T09:36:19.002Z",
+  "status": "completed",
+  "updated_at": "2026-08-21T09:38:17.160Z",
   "session_ids": [
     "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk"
   ],
@@ -105,5 +107,8 @@
       "elapsed_ms": 953791
     }
   },
-  "agent": "atlas"
+  "agent": "atlas",
+  "completed_at": "2026-08-21T07:30:00Z",
+  "ended_at": "2026-08-21T09:38:17.160Z",
+  "elapsed_ms": 11069923
 }

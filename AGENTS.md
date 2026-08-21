@@ -33,22 +33,24 @@ cp .env.example .env
 
 ## 二、.env 必填项
 
+> **注意**：开发/测试环境不需要真实 token，测试中已 mock。但生产运行必须配置。
+
 | 变量 | 说明 | 示例 |
 |------|------|------|
-| `GITHUB_TOKEN` | GitHub Personal Access Token | `ghp_xxxxxxxxxxxx` |
+| `GITHUB_TOKEN` | GitHub Personal Access Token（需 repo 权限） | `ghp_xxxxxxxxxxxx` |
 | `LLM_BASE_URL` | OpenAI 兼容 API 地址 | `https://api.openai.com/v1` |
 | `LLM_API_KEY` | LLM API Key | `sk-xxxxxxxx` |
 | `LLM_MODEL` | 模型名称 | `gpt-4o-mini` |
-| `LLM_CONTEXT_MAX_CHARS` | 上下文最大字符数（可选） | `8000` |
+| `LLM_CONTEXT_MAX_CHARS` | 上下文最大字符数（默认 12000） | `12000` |
 | `SMTP_HOST` | SMTP 服务器 | `smtp.gmail.com` |
 | `SMTP_PORT` | SMTP 端口 | `587` |
 | `SMTP_USER` | 发件邮箱 | `your@gmail.com` |
 | `SMTP_PASS` | 邮箱授权码 | `xxxxxxxx` |
 | `SMTP_FROM` | 发件人显示名/邮箱 | `your@gmail.com` |
-| `ADMIN_PASSWORD` | Web UI 管理密码 | 建议修改默认值 |
+| `ADMIN_PASSWORD` | Web UI 管理密码（留空=无登录） | `change_me` |
 | `AUTO_RUN_TIME` | 定时评测 cron 表达式（可选） | `0 9 * * *` |
-| `DATABASE_URL` | SQLite 路径（可选） | `sqlite:///./data/github_tracker.db` |
-| `TZ` | 时区（可选） | `Asia/Shanghai` |
+| `DATABASE_URL` | SQLite 路径（默认 ./data/github_tracker.db） | `sqlite:///./data/github_tracker.db` |
+| `TZ` | 时区（默认 Asia/Shanghai，GitHub API 需 UTC） | `Asia/Shanghai` |
 
 > 所有密钥必须来自 `.env`，禁止硬编码到代码中。
 
@@ -135,7 +137,9 @@ curl -X POST "http://localhost:8000/run-today?date=2025-01-15"
 **测试约定：**
 - 外部依赖（GitHub API、LLM、SMTP）必须 mock，禁止在测试中调用真实服务
 - fixtures 集中在 `tests/conftest.py`，使用 SQLite in-memory 数据库
+- **`tests/conftest.py` 会 mock `openai` 模块**，因此测试可导入 `ai_scoring_service` 而无需真实 openai 包
 - TDD：每个新特性先写 RED 测试，再实现 GREEN
+- **Assessment 幂等键**：`(student_id, project_id, date)`，重复运行 `run_today` 会更新而非重复创建
 
 ---
 
@@ -164,6 +168,31 @@ app/
 **依赖方向（单向）：** `app → api → services → models → config / utils`
 
 **禁止：** 跨层调用（api 不得直接访问 models）、吞异常（空 except / pass）、硬编码密钥。
+
+---
+
+## 十、关键实现细节（易错点）
+
+### 时区处理
+- 教师本地时区默认 `Asia/Shanghai`（D24）
+- GitHub API 的 `since`/`until` 参数必须是 **UTC**
+- `app/services/github_service.py` 中的 `_date_to_utc_range()` 负责转换
+
+### LLM 失败重试
+- 单次调用最多 3 次，指数退避（1s, 2s）
+- 3 次全败 → `Assessment.status='failed'`，`next_retry_at = now + 2h`，保存 `saved_context_json`
+- 后台 `retry_service.reap_due()` 每 2 小时重试到期失败项
+- `LLMInvalidResponse` 异常在 `pipeline.py` 中被捕获，不影响其他学生
+
+### 邮件发送
+- 同一学生当日多条 Assessment（多项目）汇总为**一封邮件**（D25）
+- 邮件失败不阻塞评分结果，仅记录 warning 日志
+- 已发送邮件（`email_sent=true`）不重复发送
+
+### 导入列名别名
+- 学生表：`学生姓名`/`student_name` → `name`，`GitHub仓库`/`github_repo`/`仓库地址` → `github_repo`，`邮箱`/`email` → `email`
+- 项目表：`项目名称`/`project_name` → `name`
+- 计划表：`日期`/`date`，`项目名称`/`project_name` → 查找 project_id，`工作计划`/`plan_content` → `content`，`学生姓名`/`student_name` → 查找 student_id（可选）
 
 ---
 
