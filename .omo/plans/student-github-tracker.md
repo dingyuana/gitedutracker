@@ -109,13 +109,13 @@
   - Commit: `git commit -m "feat: 每日 GitHub 活动快照落库"`
 
 ### Iter 4 — AI 评分服务 + 评分引擎
-- [ ] 10. RED+GREEN：AI 评分服务（OpenAI 兼容调用，结构化 JSON，四段评语）
+- [x] 10. RED+GREEN：AI 评分服务（OpenAI 兼容调用，结构化 JSON，四段评语）
   - References: D13,D14,D15,D18,D20; C9
   - Acceptance: `pytest tests/unit/test_ai_scoring.py` 红→绿；mock LLM client，`score_student(context)` 返回 JSON{quality_score,match_score,completion(bool),schedule_status(enum),comment(四段中文),reasoning}；严格校验字段与枚举；校验失败视为 LLM 失败（触发重试）；context 含该项目当日计划文本(D25) 与仓库活动；diff 超 `LLM_CONTEXT_MAX_CHARS`(D26) 截断/摘要后再送
   - QA happy: mock 返回合法 JSON → 解析成功；failure: 返回非法 JSON / 缺字段 → 抛 `LLMInvalidResponse`
   - Commit: `git commit -m "feat: AI 评分服务（结构化 JSON 校验）"`
 
-- [ ] 11. RED+GREEN：评分引擎（按权重+进度加减分算总分，纯函数）
+- [x] 11. RED+GREEN：评分引擎（按权重+进度加减分算总分，纯函数）
   - References: D13,D14,D15,D16; C7
   - Acceptance: `pytest tests/unit/test_scoring_engine.py` 红→绿；`compute_final(subscores, config)` = w_volume*vol + w_quality*qual + w_match*match + schedule_adjustment；volume 由 loc 对照 loc_threshold 归一化；schedule_status→±bonus/penalty
   - QA happy: 各子分 80、权重均分、无加减 → 80；failure: 权重缺失→用默认；落后→总分被减分

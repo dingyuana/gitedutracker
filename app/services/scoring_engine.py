@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+from typing import Any
+
+from app.models import ScoringConfig
+
+
+def compute_final(subscores: dict[str, Any], config: ScoringConfig) -> float:
+    loc = subscores.get('loc', 0)
+    volume = min(100, loc / config.loc_threshold * 100) if config.loc_threshold > 0 else 0
+
+    w_sum = config.w_volume + config.w_quality + config.w_match
+    if w_sum <= 0:
+        w_volume, w_quality, w_match = 1.0 / 3, 1.0 / 3, 1.0 / 3
+    else:
+        w_volume, w_quality, w_match = (
+            config.w_volume / w_sum,
+            config.w_quality / w_sum,
+            config.w_match / w_sum,
+        )
+
+    vol = subscores.get('volume') if subscores.get('volume') is not None else volume
+    base_score = (
+        w_volume * vol +
+        w_quality * subscores.get('quality', 0) +
+        w_match * subscores.get('match', 0)
+    )
+
+    status = subscores.get('schedule_status', 'ontime')
+    if status == 'ahead':
+        adjustment = config.schedule_bonus
+    elif status == 'behind':
+        adjustment = config.schedule_penalty
+    else:
+        adjustment = 0.0
+
+    return round(base_score + adjustment, 2)
