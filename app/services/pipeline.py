@@ -11,6 +11,7 @@ from app.models import Assessment, DailyPlan, GithubActivity, ScoringConfig, Stu
 from app.services.ai_scoring_service import LLMInvalidResponse, score_student
 from app.services.github_snapshot import sync_day
 from app.services.scoring_engine import compute_final
+from app.services.email_service import send_daily_comments
 
 
 def run_today(target_date: date, session: Optional[Session] = None) -> dict:
@@ -144,6 +145,11 @@ def run_today(target_date: date, session: Optional[Session] = None) -> dict:
             })
 
     session.commit()
+
+    try:
+        send_daily_comments(target_date, session)
+    except Exception:
+        pass
 
     return {
         "success": success_count,

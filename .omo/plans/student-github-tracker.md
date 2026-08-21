@@ -135,13 +135,13 @@
   - Commit: `git commit -m "feat: LLM 失败重试与 2 小时后台 reaper"`
 
 ### Iter 6 — 邮件发送
-- [ ] 14. RED+GREEN：邮件发送服务（smtplib，鼓励模板，自动发送+重试）
+- [x] 14. RED+GREEN：邮件发送服务（smtplib，鼓励模板，自动发送+重试）
   - References: D17,D18; C8
   - Acceptance: `pytest tests/unit/test_email.py` 红→绿；mock smtplib，`send_daily_comments(date)` 给每位 status=done 且未发送的学生发邮件（主题/正文含四段评语与分数）；发送标记避免重复；SMTP 失败重试；同一学生当日多条 Assessment 汇总为一封邮件(D25)
   - QA happy: 2 条 done → 2 封邮件且正文含鼓励开场与改进建议；failure: SMTP 异常→记录未发送，不抛未捕获
   - Commit: `git commit -m "feat: 自动发送鼓励邮件（smtplib）"`
 
-- [ ] 15. RED+GREEN：流水线串联邮件（run_today 末尾触发发信）
+- [x] 15. RED+GREEN：流水线串联邮件（run_today 末尾触发发信）
   - References: D17,D21; C5,C8
   - Acceptance: `pytest tests/integration/test_run_today_email.py` 红→绿；`run_today()` 评分完成后自动调用 `send_daily_comments`
   - QA happy: mock 全链路 → 评分+发信均发生；failure: 发信失败→评分结果仍保留可重发
