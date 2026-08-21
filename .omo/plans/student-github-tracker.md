@@ -96,13 +96,13 @@
   - Commit: `git commit -m "feat: xlsx 导出每日评分表+评语"`
 
 ### Iter 3 — GitHub 同步
-- [ ] 8. RED+GREEN：GitHub 客户端（PyGithub 封装，按仓库/日期取 commits+PRs+diff+增删行）
+- [x] 8. RED+GREEN：GitHub 客户端（PyGithub 封装，按仓库/日期取 commits+PRs+diff+增删行）
   - References: D1,D10,D12; C3
   - Acceptance: `pytest tests/unit/test_github.py` 红→绿；mock PyGithub，`fetch_activity(repo, date)` 返回 commits(count, list{sha,message,additions,deletions,files}), prs_opened, prs_merged, loc 汇总；仓库归一化；超界/空仓库优雅处理；`date` 按 D24 时区转 UTC 的 since/until 查询
   - QA happy: mock 返回 2 commits → 解析出 loc_additions/deletions；failure: 仓库不存在→抛可识别错误并记入状态
   - Commit: `git commit -m "feat: GitHub 客户端按日取活动与 diff"`
 
-- [ ] 9. RED+GREEN：活动快照落库（GithubActivity）+ 批量同步入口
+- [x] 9. RED+GREEN：活动快照落库（GithubActivity）+ 批量同步入口
   - References: D10,D12; C3,C5
   - Acceptance: `pytest tests/unit/test_github_snapshot.py` 红→绿；`sync_day(date)` 为每个学生写/更新 `GithubActivity`（含 commits_json, loc, 状态, fetched_at）；按 D24 时区界定当日
   - QA happy: 2 学生 → 2 条快照；failure: 某学生仓库失败→其余成功，失败者状态标记
