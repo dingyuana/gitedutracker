@@ -148,8 +148,9 @@ def run_today(target_date: date, session: Optional[Session] = None) -> dict:
 
     try:
         send_daily_comments(target_date, session)
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.warning("邮件发送失败: %s", e)
 
     return {
         "success": success_count,

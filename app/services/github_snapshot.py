@@ -48,7 +48,9 @@ def sync_day(target_date: date, session: Session = None) -> int:
             activity.fetched_at = date.today()
             session.add(activity)
             success_count += 1
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.warning("GitHub 同步失败 student_id=%s: %s", student.id, e)
             activity = session.exec(
                 select(GithubActivity).where(
                     GithubActivity.student_id == student.id,

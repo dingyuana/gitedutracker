@@ -8,7 +8,7 @@
       "plan_name": "student-github-tracker",
       "status": "active",
       "started_at": "2026-08-21T06:33:47.237Z",
-      "updated_at": "2026-08-21T09:18:52.923Z",
+      "updated_at": "2026-08-21T09:20:25.209Z",
       "session_ids": [
         "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk"
       ],
@@ -40,6 +40,16 @@
           "status": "completed",
           "ended_at": "2026-08-21T09:18:52.923Z",
           "elapsed_ms": 241535
+        },
+        "final-wave:f1": {
+          "task_key": "final-wave:f1",
+          "task_label": "F1",
+          "task_title": "计划合规审计：每个 todo 均有 References/Acceptance/QA/Commit；无业务假设无证据；任务行语法 `- [ ] N.` / `- [ ] F<number>.` 列零对齐",
+          "session_id": "opencode:ses_fdc61c9aaffej4PL0POSGWTqRP",
+          "agent": "general",
+          "updated_at": "2026-08-21T09:20:25.211Z",
+          "started_at": "2026-08-21T09:20:25.211Z",
+          "status": "running"
         }
       }
     }
@@ -47,7 +57,7 @@
   "active_plan": "/data/disk/gitedutracker/.omo/plans/student-github-tracker.md",
   "started_at": "2026-08-21T06:33:47.237Z",
   "status": "active",
-  "updated_at": "2026-08-21T09:18:52.923Z",
+  "updated_at": "2026-08-21T09:20:25.209Z",
   "session_ids": [
     "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk"
   ],
@@ -79,6 +89,16 @@
       "status": "completed",
       "ended_at": "2026-08-21T09:18:52.923Z",
       "elapsed_ms": 241535
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "计划合规审计：每个 todo 均有 References/Acceptance/QA/Commit；无业务假设无证据；任务行语法 `- [ ] N.` / `- [ ] F<number>.` 列零对齐",
+      "session_id": "opencode:ses_fdc61c9aaffej4PL0POSGWTqRP",
+      "agent": "general",
+      "updated_at": "2026-08-21T09:20:25.211Z",
+      "started_at": "2026-08-21T09:20:25.211Z",
+      "status": "running"
     }
   },
   "agent": "atlas"
