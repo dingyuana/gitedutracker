@@ -8,7 +8,7 @@
       "plan_name": "student-github-tracker",
       "status": "active",
       "started_at": "2026-08-21T06:33:47.237Z",
-      "updated_at": "2026-08-21T06:38:47.022Z",
+      "updated_at": "2026-08-21T06:53:37.428Z",
       "session_ids": [
         "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk"
       ],
@@ -20,14 +20,14 @@
         "todo:1": {
           "task_key": "todo:1",
           "task_label": "1",
-          "task_title": "SPEC/PLAN/AGENT 三件套骨架（中文）",
-          "session_id": "opencode:ses_fdcf7d4cdffe9ZKG34dCZycMfa",
+          "task_title": "先写测试文件 `tests/unit/test_models.py`，包含所有断言，此时代码不存在 → pytest 应 RED",
+          "session_id": "opencode:ses_fdcf46b36ffeKQImLRjiuKwSaa",
           "agent": "general",
-          "updated_at": "2026-08-21T06:38:47.022Z",
           "started_at": "2026-08-21T06:38:13.277Z",
+          "ended_at": "2026-08-21T06:53:37.425Z",
+          "elapsed_ms": 924148,
           "status": "completed",
-          "ended_at": "2026-08-21T06:38:47.021Z",
-          "elapsed_ms": 33744
+          "updated_at": "2026-08-21T06:53:37.428Z"
         }
       }
     }
@@ -35,7 +35,7 @@
   "active_plan": "/data/disk/gitedutracker/.omo/plans/student-github-tracker.md",
   "started_at": "2026-08-21T06:33:47.237Z",
   "status": "active",
-  "updated_at": "2026-08-21T06:38:47.022Z",
+  "updated_at": "2026-08-21T06:53:37.428Z",
   "session_ids": [
     "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk"
   ],
@@ -47,14 +47,14 @@
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "SPEC/PLAN/AGENT 三件套骨架（中文）",
-      "session_id": "opencode:ses_fdcf7d4cdffe9ZKG34dCZycMfa",
+      "task_title": "先写测试文件 `tests/unit/test_models.py`，包含所有断言，此时代码不存在 → pytest 应 RED",
+      "session_id": "opencode:ses_fdcf46b36ffeKQImLRjiuKwSaa",
       "agent": "general",
-      "updated_at": "2026-08-21T06:38:47.022Z",
       "started_at": "2026-08-21T06:38:13.277Z",
+      "ended_at": "2026-08-21T06:53:37.425Z",
+      "elapsed_ms": 924148,
       "status": "completed",
-      "ended_at": "2026-08-21T06:38:47.021Z",
-      "elapsed_ms": 33744
+      "updated_at": "2026-08-21T06:53:37.428Z"
     }
   },
   "agent": "atlas"

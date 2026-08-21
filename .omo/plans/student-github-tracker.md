@@ -64,13 +64,13 @@
   - Commit: `git commit -m "build: 脚手架与依赖声明"`
 
 ### Iter 1 — 数据模型 + 配置 + DB
-- [ ] 3. RED+GREEN：SQLModel 模型（Student/Project/DailyPlan/GithubActivity/PlanCompletion/Assessment/ScoringConfig）
+- [x] 3. RED+GREEN：SQLModel 模型（Student/Project/DailyPlan/GithubActivity/PlanCompletion/Assessment/ScoringConfig）
   - References: D3,D9,D11,D12,D15,D16,D22; C1
   - Acceptance: `pytest tests/unit/test_models.py` 先红后绿；覆盖 Student(邮箱必填、仓库归一化 owner/repo)、Assessment(`status/attempts/next_retry_at/saved_context_json` 字段)、ScoringConfig 默认值
   - QA happy: 建 Student(含邮箱)→查回；建 Assessment 默认 status=pending；failure: 缺邮箱→校验失败；仓库 URL 归一化为 owner/repo
   - Commit: `git commit -m "feat: SQLModel 模型与 SQLite 引擎"`
 
-- [ ] 4. RED+GREEN：配置层（pydantic-settings 读 .env）+ DB 引擎初始化
+- [x] 4. RED+GREEN：配置层（pydantic-settings 读 .env）+ DB 引擎初始化
   - References: D6,D20,D21; C1,C6
   - Acceptance: `pytest tests/unit/test_config.py` 红→绿；`get_settings()` 从 `.env` 读 GITHUB_TOKEN/LLM_*/SMTP_*/ADMIN_PASSWORD/AUTO_RUN_TIME；`init_db()` 创建表；`ADMIN_PASSWORD` 为空时 `require_auth=False`
   - QA happy: 提供 .env → 设置正确加载；failure: 缺 LLM_API_KEY → 启动评测时报明确错误而非崩溃
