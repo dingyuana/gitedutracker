@@ -180,10 +180,10 @@
   - Commit: `git commit -m "chore: 样例数据与全量验证通过"`
 
 ## Final verification wave
-- [ ] F1. 计划合规审计：每个 todo 均有 References/Acceptance/QA/Commit；无业务假设无证据；任务行语法 `- [ ] N.` / `- [ ] F<number>.` 列零对齐
-- [ ] F2. 代码质量评审：分层单向依赖、无吞异常、密钥仅来自 `.env`、测试覆盖导入/评分/重试/邮件关键路径
-- [ ] F3. 真实手动 QA：启动 `uvicorn`，导入样例 xlsx，配置（或 mock）LLM/SMTP，点「今日评测」→ 生成 Assessment + 邮件草稿 + 导出 xlsx 一致
-- [ ] F4. 范围保真：确认「无教师复核 UI」「全中文文档」「LLM 失败 3 次后落库+2h 重试」均已实现，无范围蔓延
+- [x] F1. 计划合规审计：每个 todo 均有 References/Acceptance/QA/Commit；无业务假设无证据；任务行语法 `- [ ] N.` / `- [ ] F<number>.` 列零对齐
+- [x] F2. 代码质量评审：分层单向依赖、无吞异常、密钥仅来自 `.env`、测试覆盖导入/评分/重试/邮件关键路径
+- [x] F3. 真实手动 QA：启动 `uvicorn`，导入样例 xlsx，配置（或 mock）LLM/SMTP，点「今日评测」→ 生成 Assessment + 邮件草稿 + 导出 xlsx 一致
+- [x] F4. 范围保真：确认「无教师复核 UI」「全中文文档」「LLM 失败 3 次后落库+2h 重试」均已实现，无范围蔓延
 
 ## Commit strategy
 - 每迭代全绿后单独提交（Iter 0–8 各 1+ commit），提交信息中文、前缀 `feat:/test:/docs:/build:/chore:`。
