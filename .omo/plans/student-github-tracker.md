@@ -83,13 +83,13 @@
   - Commit: `git commit -m "feat: ScoringConfig 默认种子（幂等）"`
 
 ### Iter 2 — 表格导入 / 导出
-- [ ] 6. RED+GREEN：xlsx 导入引擎（学生/项目/计划，中英文列名别名）
+- [x] 6. RED+GREEN：xlsx 导入引擎（学生/项目/计划，中英文列名别名）
   - References: D8,D9,D11; C2
   - Acceptance: `pytest tests/unit/test_import.py` 红→绿；用 fixture `tests/fixtures/sample_students.xlsx` 验证 `import_students()` 解析 学生姓名/ GitHub仓库(支持 URL 或 owner/repo)/ 邮箱(必填)；`import_projects()`、`import_plans()`（按 项目名称 解析 project_id，可选 学生姓名→student_id）
   - QA happy: 导入 3 行学生→DB 增 3；failure: 缺邮箱列→报错并指出行号；列名用「学生姓名」也能解析
   - Commit: `git commit -m "feat: xlsx 导入（中英文列名，学生/项目/计划）"`
 
-- [ ] 7. RED+GREEN：xlsx 导出（每日评分表+评语）
+- [x] 7. RED+GREEN：xlsx 导出（每日评分表+评语）
   - References: D8,D18; C2
   - Acceptance: `pytest tests/unit/test_export.py` 红→绿；`export_daily(date)` 生成 xlsx，列含 日期,学生姓名,邮箱,GitHub仓库,项目名称,代码增,代码删,质量分,匹配分,进度,总分,评语；按日期过滤
   - QA happy: 造 2 条 Assessment → 导出 2 行且字段对齐；failure: 无数据→导出空表但格式正确
