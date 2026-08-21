@@ -76,7 +76,7 @@
   - QA happy: 提供 .env → 设置正确加载；failure: 缺 LLM_API_KEY → 启动评测时报明确错误而非崩溃
   - Commit: `git commit -m "feat: 配置层与数据库初始化"`
 
-- [ ] 5. RED+GREEN：ScoringConfig 种子（默认权重与加减分）
+- [x] 5. RED+GREEN：ScoringConfig 种子（默认权重与加减分）
   - References: D16; C1
   - Acceptance: `pytest tests/unit/test_config_seed.py` 红→绿；`seed_config()` 幂等写入默认 w_volume/w_quality/w_match=各 1/3、loc_threshold、schedule_bonus/penalty；已存在则跳过
   - QA happy: 首次 seed 写入默认行；二次 seed 不重复创建；failure: 权重和≠1 时不强制但记录
