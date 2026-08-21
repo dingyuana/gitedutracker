@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}计划列表 — 学生 GitHub 日报追踪器{% endblock %}
+{% block content %}
+<h1>计划列表</h1>
+<div class="card">
+    <h3>每日计划</h3>
+    {% if plans %}
+    <table>
+        <thead>
+            <tr><th>日期</th><th>项目</th><th>内容</th><th>学生</th></tr>
+        </thead>
+        <tbody>
+            {% for plan in plans %}
+            <tr>
+                <td>{{ plan.date }}</td>
+                <td>{{ plan.project_id }}</td>
+                <td>{{ plan.content }}</td>
+                <td>{{ plan.student_id or "全部" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">暂无计划</p>
+    {% endif %}
+</div>
+{% endblock %}

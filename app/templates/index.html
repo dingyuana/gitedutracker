@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}看板 — 学生 GitHub 日报追踪器{% endblock %}
+{% block content %}
+<h1>看板</h1>
+<div class="stats">
+    <div class="stat-card">
+        <div class="label">学生数</div>
+        <div class="value">{{ students|length }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">项目数</div>
+        <div class="value">{{ projects|length }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">最近评测</div>
+        <div class="value">
+            {% if latest_assessment %}
+                {{ latest_assessment.date }}
+            {% else %}
+                无
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% if students %}
+<div class="card">
+    <h3>学生列表</h3>
+    <ul>
+        {% for s in students %}
+        <li>{{ s.name }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+{% if projects %}
+<div class="card">
+    <h3>项目列表</h3>
+    <ul>
+        {% for p in projects %}
+        <li>{{ p.name }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+<div class="card">
+    <form action="/run-today" method="POST" onsubmit="return confirm('确定要运行今日评测吗？')">
+        <button type="submit" class="btn btn-success">今日评测</button>
+    </form>
+</div>
+{% endblock %}

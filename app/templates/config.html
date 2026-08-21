@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}评分配置 — 学生 GitHub 日报追踪器{% endblock %}
+{% block content %}
+<h1>评分配置</h1>
+<div class="card">
+    <h3>权重配置</h3>
+    <form method="POST" action="/config">
+        <div class="form-group">
+            <label>w_volume（代码量权重）</label>
+            <input type="number" step="0.001" name="w_volume" value="{{ config.w_volume }}">
+        </div>
+        <div class="form-group">
+            <label>w_quality（质量权重）</label>
+            <input type="number" step="0.001" name="w_quality" value="{{ config.w_quality }}">
+        </div>
+        <div class="form-group">
+            <label>w_match（匹配权重）</label>
+            <input type="number" step="0.001" name="w_match" value="{{ config.w_match }}">
+        </div>
+        <div class="form-group">
+            <label>LOC 阈值</label>
+            <input type="number" name="loc_threshold" value="{{ config.loc_threshold }}">
+        </div>
+        <div class="form-group">
+            <label>提前奖励</label>
+            <input type="number" step="0.1" name="schedule_bonus" value="{{ config.schedule_bonus }}">
+        </div>
+        <div class="form-group">
+            <label>滞后惩罚</label>
+            <input type="number" step="0.1" name="schedule_penalty" value="{{ config.schedule_penalty }}">
+        </div>
+        <button type="submit" class="btn btn-primary">保存配置</button>
+    </form>
+</div>
+{% endblock %}

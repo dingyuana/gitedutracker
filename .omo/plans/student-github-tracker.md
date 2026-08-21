@@ -148,7 +148,7 @@
   - Commit: `git commit -m "feat: 评测后自动发信串联"`
 
 ### Iter 7 — Web UI / API / 调度
-- [ ] 16. RED+GREEN：FastAPI 路由与 Jinja2 页面（看板/列表/配置/结果/导出/今日评测）
+- [x] 16. RED+GREEN：FastAPI 路由与 Jinja2 页面（看板/列表/配置/结果/导出/今日评测）
   - References: D2,D5,D21; C4
   - Acceptance: `pytest tests/integration/test_routes.py` 红→绿；GET `/`(看板含「今日评测」按钮)、`/students`(列表+导入)、`/projects`、`/plans`、`/config`(权重表单)、`/results?date=`、`/export?date=&fmt=xlsx`(下载)、POST `/run-today`
   - QA happy: 上传 fixture xlsx → 列表出现；点「今日评测」→ 结果页出现；failure: 未配 LLM key → `/run-today` 返回明确错误页

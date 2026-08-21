@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}学生 GitHub 日报追踪器{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #333; }
+        nav { background: #1a73e8; color: white; padding: 1rem 2rem; display: flex; gap: 2rem; align-items: center; }
+        nav a { color: white; text-decoration: none; opacity: 0.85; font-size: 0.95rem; }
+        nav a:hover { opacity: 1; text-decoration: underline; }
+        nav .brand { font-weight: 700; font-size: 1.1rem; opacity: 1; }
+        main { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+        h1 { margin-bottom: 1.5rem; font-size: 1.5rem; color: #1a73e8; }
+        .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .btn { display: inline-block; padding: 0.6rem 1.2rem; border-radius: 6px; text-decoration: none; font-size: 0.9rem; cursor: pointer; border: none; }
+        .btn-primary { background: #1a73e8; color: white; }
+        .btn-primary:hover { background: #1558b0; }
+        .btn-success { background: #34a853; color: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        th { background: #f8f9fa; font-weight: 600; color: #555; }
+        .stats { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+        .stat-card { background: white; border-radius: 8px; padding: 1rem 1.5rem; flex: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .stat-card .label { font-size: 0.8rem; color: #888; margin-bottom: 0.3rem; }
+        .stat-card .value { font-size: 1.8rem; font-weight: 700; color: #1a73e8; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.3rem; font-size: 0.9rem; color: #555; }
+        .form-group input, .form-group select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem; }
+        .empty { color: #999; font-style: italic; padding: 1rem; text-align: center; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/" class="brand">GitHub 日报追踪器</a>
+        <a href="/">看板</a>
+        <a href="/students">学生</a>
+        <a href="/projects">项目</a>
+        <a href="/plans">计划</a>
+        <a href="/config">配置</a>
+        <a href="/results">评测结果</a>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

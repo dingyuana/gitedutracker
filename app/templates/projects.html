@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}项目列表 — 学生 GitHub 日报追踪器{% endblock %}
+{% block content %}
+<h1>项目列表</h1>
+<div class="card">
+    <h3>项目列表</h3>
+    {% if projects %}
+    <table>
+        <thead>
+            <tr><th>名称</th><th>描述</th><th>开始日期</th><th>结束日期</th></tr>
+        </thead>
+        <tbody>
+            {% for p in projects %}
+            <tr>
+                <td>{{ p.name }}</td>
+                <td>{{ p.description or "" }}</td>
+                <td>{{ p.start_date or "" }}</td>
+                <td>{{ p.end_date or "" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">暂无项目</p>
+    {% endif %}
+</div>
+{% endblock %}
