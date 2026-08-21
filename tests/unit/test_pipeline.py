@@ -116,13 +116,16 @@ def mock_ai_response():
 
 class TestRunTodaySuccess:
 
+    @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
-    def test_generates_done_assessments(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+    def test_generates_done_assessments(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                        session, seed_data, mock_settings, mock_ai_response):
         from app.services.pipeline import run_today
 
         mock_sync_day.return_value = 2
         mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
 
         result = run_today(seed_data['target'], session=session)
 
@@ -140,13 +143,16 @@ class TestRunTodaySuccess:
             assert a.quality_score is not None
             assert a.evaluated_at is not None
 
+    @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
-    def test_returns_correct_counts(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+    def test_returns_correct_counts(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                    session, seed_data, mock_settings, mock_ai_response):
         from app.services.pipeline import run_today
 
         mock_sync_day.return_value = 2
         mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
 
         result = run_today(seed_data['target'], session=session)
 
@@ -157,9 +163,11 @@ class TestRunTodaySuccess:
 
 class TestLLMFailureIsolation:
 
+    @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
-    def test_one_student_failure_does_not_affect_others(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+    def test_one_student_failure_does_not_affect_others(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                                        session, seed_data, mock_settings, mock_ai_response):
         from app.services.pipeline import run_today
         from app.services.ai_scoring_service import LLMInvalidResponse
 
@@ -198,9 +206,11 @@ class TestLLMFailureIsolation:
             assert a.next_retry_at is not None
             assert a.saved_context_json is not None
 
+    @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
-    def test_failed_assessment_has_retry_fields(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings):
+    def test_failed_assessment_has_retry_fields(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                                 session, seed_data, mock_settings):
         from app.services.pipeline import run_today
         from app.services.ai_scoring_service import LLMInvalidResponse
 
@@ -224,9 +234,11 @@ class TestLLMFailureIsolation:
 
 class TestIdempotency:
 
+    @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
-    def test_repeated_call_does_not_duplicate_assessments(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+    def test_repeated_call_does_not_duplicate_assessments(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                                          session, seed_data, mock_settings, mock_ai_response):
         from app.services.pipeline import run_today
 
         mock_sync_day.return_value = 2
@@ -244,9 +256,11 @@ class TestIdempotency:
 
         assert first_count == second_count
 
+    @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
-    def test_repeated_call_updates_existing_assessment(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+    def test_repeated_call_updates_existing_assessment(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                                       session, seed_data, mock_settings, mock_ai_response):
         from app.services.pipeline import run_today
 
         mock_sync_day.return_value = 2
@@ -284,9 +298,11 @@ class TestIdempotency:
 
 class TestPlanFiltering:
 
+    @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
-    def test_student_specific_plan_only_applies_to_that_student(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+    def test_student_specific_plan_only_applies_to_that_student(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                                                 session, seed_data, mock_settings, mock_ai_response):
         from app.services.pipeline import run_today
 
         mock_sync_day.return_value = 2
@@ -318,9 +334,11 @@ class TestPlanFiltering:
 
 class TestContextConstruction:
 
+    @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
-    def test_passes_correct_context_to_score_student(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+    def test_passes_correct_context_to_score_student(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                                      session, seed_data, mock_settings, mock_ai_response):
         from app.services.pipeline import run_today
 
         mock_sync_day.return_value = 2
@@ -341,9 +359,11 @@ class TestContextConstruction:
 
 class TestReturnStructure:
 
+    @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
-    def test_returns_dict_with_required_keys(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+    def test_returns_dict_with_required_keys(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                              session, seed_data, mock_settings, mock_ai_response):
         from app.services.pipeline import run_today
 
         mock_sync_day.return_value = 2

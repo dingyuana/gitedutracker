@@ -154,26 +154,26 @@
   - QA happy: 上传 fixture xlsx → 列表出现；点「今日评测」→ 结果页出现；failure: 未配 LLM key → `/run-today` 返回明确错误页
   - Commit: `git commit -m "feat: Web UI 路由与 Jinja2 页面"`
 
-- [ ] 17. RED+GREEN：可选登录（ADMIN_PASSWORD）与定时调度（AUTO_RUN_TIME）
+- [x] 17. RED+GREEN：可选登录（ADMIN_PASSWORD）与定时调度（AUTO_RUN_TIME）
   - References: D6,D21; C4,C6
   - Acceptance: `pytest tests/integration/test_auth_schedule.py` 红→绿；设 ADMIN_PASSWORD 时 `/login` 拦截未登录；`AUTO_RUN_TIME` 设置时 APScheduler 每日触发 `run_today`；不设则跳过
   - QA happy: 设密码→未登录访问被拦；failure: 错误密码→401；定时到点→run_today 被调用
   - Commit: `git commit -m "feat: 可选登录与定时调度"`
 
 ### Iter 8 — 文档 + AGENTS.md + 全量验证
-- [ ] 18. 填充 SPEC.md / PLAN.md / AGENT.md（中文，含各迭代场景与验收）
+- [x] 18. 填充 SPEC.md / PLAN.md / AGENT.md（中文，含各迭代场景与验收）
   - References: D19,D23; C10
   - Acceptance: 三件套覆盖全部 9 迭代的 GWT 场景、接口契约、验收表、Python 命名/分层/禁止项；与最终实现一致
   - QA happy: 文档可被新 agent 读懂并执行；failure: 文档与代码不符→修正
   - Commit: `git commit -m "docs: 完善中文 SPEC/PLAN/AGENT"`
 
-- [ ] 19. 生成仓库 AGENTS.md（中文，给未来 agent 的速查）
+- [x] 19. 生成仓库 AGENTS.md（中文，给未来 agent 的速查）
   - References: D19; 原始会话目标
   - Acceptance: 根 `AGENTS.md` 含：启动命令(`uvicorn app.main:app --reload`)、安装(`python -m venv .venv && pip install -r requirements.txt`)、`.env` 必填项、导入/导出列约定、一键「今日评测」、LLM/SMTP 配置、测试 `pytest`、架构分层、spec-coding 约定入口
   - QA happy: 新会话读 AGENTS.md 能复现环境；failure: 缺关键命令→补
   - Commit: `git commit -m "docs: 生成中文 AGENTS.md"`
 
-- [ ] 20. 样例数据脚本 + 全量验证
+- [x] 20. 样例数据脚本 + 全量验证
   - References: D7; C6
   - Acceptance: `python -m app.scripts.seed_sample` 生成 `sample_students.xlsx/sample_projects.xlsx/sample_plans.xlsx`；`pytest` 全绿；手动 `uvicorn` 启动后导入样例并点「今日评测」跑通（mock 或真实 token 由教师提供）
   - QA happy: 全测试通过 + 样例导入导出往返成功；failure: 任一测试红→修复后再提交
