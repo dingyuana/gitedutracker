@@ -41,12 +41,14 @@ def _attempt_score(
             total_score = compute_final(subscores, config)
 
             query_date = target_date or ctx_dict.get("date")
-            assessment = session.exec(
-                select(Assessment).where(
-                    Assessment.student_id == student_id,
-                    Assessment.date == query_date,
-                )
-            ).first()
+            proj_id = ctx_dict.get("project_id")
+            q = select(Assessment).where(
+                Assessment.student_id == student_id,
+                Assessment.date == query_date,
+            )
+            if proj_id is not None:
+                q = q.where(Assessment.project_id == proj_id)
+            assessment = session.exec(q).first()
             if assessment is None:
                 return False
 
@@ -65,12 +67,14 @@ def _attempt_score(
         except Exception as e:
             if attempt == max_attempts:
                 query_date = target_date or ctx_dict.get("date")
-                assessment = session.exec(
-                    select(Assessment).where(
-                        Assessment.student_id == student_id,
-                        Assessment.date == query_date,
-                    )
-                ).first()
+                proj_id = ctx_dict.get("project_id")
+                q = select(Assessment).where(
+                    Assessment.student_id == student_id,
+                    Assessment.date == query_date,
+                )
+                if proj_id is not None:
+                    q = q.where(Assessment.project_id == proj_id)
+                assessment = session.exec(q).first()
                 if assessment is None:
                     return False
 

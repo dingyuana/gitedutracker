@@ -1,18 +1,19 @@
 import datetime
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import Student, Project, DailyPlan, Assessment, ScoringConfig
 from app.utils.export import export_daily
 from app.services.pipeline import run_today
+from app.middleware.auth import require_auth, login_endpoint, security
 
 router = APIRouter()
 
 
 @router.get("/", response_class=HTMLResponse)
-def index(request: Request, session: Session = Depends(get_session)):
+def index(request: Request, auth_check=Depends(require_auth), session: Session = Depends(get_session)):
     students = session.exec(select(Student)).all()
     projects = session.exec(select(Project)).all()
     latest_assessment = session.exec(
@@ -29,7 +30,7 @@ def index(request: Request, session: Session = Depends(get_session)):
 
 
 @router.get("/students", response_class=HTMLResponse)
-def students_page(request: Request, session: Session = Depends(get_session)):
+def students_page(request: Request, auth_check=Depends(require_auth), session: Session = Depends(get_session)):
     student_list = session.exec(select(Student)).all()
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "students.html", {
@@ -38,7 +39,7 @@ def students_page(request: Request, session: Session = Depends(get_session)):
 
 
 @router.get("/projects", response_class=HTMLResponse)
-def projects_page(request: Request, session: Session = Depends(get_session)):
+def projects_page(request: Request, auth_check=Depends(require_auth), session: Session = Depends(get_session)):
     project_list = session.exec(select(Project)).all()
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "projects.html", {
@@ -47,7 +48,7 @@ def projects_page(request: Request, session: Session = Depends(get_session)):
 
 
 @router.get("/plans", response_class=HTMLResponse)
-def plans_page(request: Request, session: Session = Depends(get_session)):
+def plans_page(request: Request, auth_check=Depends(require_auth), session: Session = Depends(get_session)):
     plans = session.exec(
         select(DailyPlan).order_by(DailyPlan.date.desc())
     ).all()
@@ -58,7 +59,7 @@ def plans_page(request: Request, session: Session = Depends(get_session)):
 
 
 @router.get("/config", response_class=HTMLResponse)
-def config_page(request: Request, session: Session = Depends(get_session)):
+def config_page(request: Request, auth_check=Depends(require_auth), session: Session = Depends(get_session)):
     config = session.exec(select(ScoringConfig)).first()
     if config is None:
         from app.services.config_seed import seed_config
@@ -72,6 +73,7 @@ def config_page(request: Request, session: Session = Depends(get_session)):
 @router.get("/results", response_class=HTMLResponse)
 def results_page(
     request: Request,
+    auth_check=Depends(require_auth),
     date: str = None,
     session: Session = Depends(get_session),
 ):
@@ -96,6 +98,7 @@ def results_page(
 
 @router.get("/export")
 def export_page(
+    auth_check=Depends(require_auth),
     date: str = None,
     fmt: str = "xlsx",
     session: Session = Depends(get_session),
@@ -117,6 +120,7 @@ def export_page(
 
 @router.post("/run-today")
 def run_today_endpoint(
+    auth_check=Depends(require_auth),
     date: str = None,
     session: Session = Depends(get_session),
 ):
@@ -130,3 +134,8 @@ def run_today_endpoint(
         raise HTTPException(status_code=422, detail="日期格式无效")
     result = run_today(target_date, session=session)
     return result
+
+
+@router.post("/api/login", response_class=JSONResponse)
+def login_endpoint_route(credentials=Depends(security)):
+    return login_endpoint(credentials)
