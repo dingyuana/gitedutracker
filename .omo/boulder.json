@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "active_work_id": "student-github-tracker-9bc13a79",
+  "works": {
+    "student-github-tracker-9bc13a79": {
+      "work_id": "student-github-tracker-9bc13a79",
+      "active_plan": "/data/disk/gitedutracker/.omo/plans/student-github-tracker.md",
+      "plan_name": "student-github-tracker",
+      "status": "active",
+      "started_at": "2026-08-21T06:33:47.237Z",
+      "updated_at": "2026-08-21T06:38:47.022Z",
+      "session_ids": [
+        "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk"
+      ],
+      "session_origins": {
+        "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {
+        "todo:1": {
+          "task_key": "todo:1",
+          "task_label": "1",
+          "task_title": "SPEC/PLAN/AGENT 三件套骨架（中文）",
+          "session_id": "opencode:ses_fdcf7d4cdffe9ZKG34dCZycMfa",
+          "agent": "general",
+          "updated_at": "2026-08-21T06:38:47.022Z",
+          "started_at": "2026-08-21T06:38:13.277Z",
+          "status": "completed",
+          "ended_at": "2026-08-21T06:38:47.021Z",
+          "elapsed_ms": 33744
+        }
+      }
+    }
+  },
+  "active_plan": "/data/disk/gitedutracker/.omo/plans/student-github-tracker.md",
+  "started_at": "2026-08-21T06:33:47.237Z",
+  "status": "active",
+  "updated_at": "2026-08-21T06:38:47.022Z",
+  "session_ids": [
+    "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk"
+  ],
+  "session_origins": {
+    "opencode:ses_fdd3fcd32ffeYh3tzgUJbZz0Tk": "direct"
+  },
+  "plan_name": "student-github-tracker",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "SPEC/PLAN/AGENT 三件套骨架（中文）",
+      "session_id": "opencode:ses_fdcf7d4cdffe9ZKG34dCZycMfa",
+      "agent": "general",
+      "updated_at": "2026-08-21T06:38:47.022Z",
+      "started_at": "2026-08-21T06:38:13.277Z",
+      "status": "completed",
+      "ended_at": "2026-08-21T06:38:47.021Z",
+      "elapsed_ms": 33744
+    }
+  },
+  "agent": "atlas"
+}
