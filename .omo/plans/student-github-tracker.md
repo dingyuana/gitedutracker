@@ -122,13 +122,13 @@
   - Commit: `git commit -m "feat: 评分引擎（权重+进度加减分）"`
 
 ### Iter 5 — 自动流水线 + 失败重试
-- [ ] 12. RED+GREEN：自动评分流水线（sync→AI→engine→persist Assessment）
+- [x] 12. RED+GREEN：自动评分流水线（sync→AI→engine→persist Assessment）
   - References: D13,D14,D15,D18,D21; C5,C9
   - Acceptance: `pytest tests/unit/test_pipeline.py` 红→绿；`run_today()` 编排：同步→逐学生 AI 评分→算分→写 `Assessment(status=done, comment, scores)`→返回汇总；全程无人工环节；Assessment 以 (student_id,project_id,date) 为键(D25)，重跑幂等更新；对当日每个适用计划(学生专属或全员)分别评分
   - QA happy: mock GitHub+LLM → 生成 done 的 Assessment；failure: 单个学生 LLM 失败→不影响他人，该生进入重试队列
   - Commit: `git commit -m "feat: 自动评分流水线（无复核）"`
 
-- [ ] 13. RED+GREEN：LLM 失败重试 + 2 小时后台 reaper（D22）
+- [x] 13. RED+GREEN：LLM 失败重试 + 2 小时后台 reaper（D22）
   - References: D22; C9
   - Acceptance: `pytest tests/unit/test_retry.py` 红→绿；连续 3 次 LLM 失败后 `Assessment.status=failed, next_retry_at=now+2h, saved_context_json` 保存；`reap_due()` 查询到期失败项重新评分；循环同策略
   - QA happy: 注入 3 次失败→落库 failed+2h；推进时间后 reaper 成功→done；failure: 一直失败→保持 failed 不丢

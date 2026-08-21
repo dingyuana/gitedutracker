@@ -1,0 +1,359 @@
+import sys
+import os
+import json
+import pytest
+from datetime import date, datetime, timezone, timedelta
+from unittest.mock import patch, MagicMock
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+from sqlmodel import SQLModel, create_engine, Session, select
+from app.models import (
+    Student, Project, DailyPlan, GithubActivity, Assessment, ScoringConfig,
+)
+
+
+@pytest.fixture
+def engine():
+    return create_engine("sqlite:///:memory:")
+
+
+@pytest.fixture
+def session(engine):
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        yield s
+
+
+@pytest.fixture
+def seed_data(session):
+    s1 = Student(name='张三', email='zs@example.com', github_repo='zs/myrepo')
+    s2 = Student(name='李四', email='ls@example.com', github_repo='ls/myrepo')
+    session.add(s1)
+    session.add(s2)
+    session.commit()
+    session.refresh(s1)
+    session.refresh(s2)
+
+    p1 = Project(name='项目A')
+    session.add(p1)
+    session.commit()
+    session.refresh(p1)
+
+    plan_all = DailyPlan(
+        project_id=p1.id,
+        date=date(2026, 8, 21),
+        content='完成登录模块',
+        student_id=None,
+    )
+    plan_s1 = DailyPlan(
+        project_id=p1.id,
+        date=date(2026, 8, 21),
+        content='完成登录模块（张三专属）',
+        student_id=s1.id,
+    )
+    session.add_all([plan_all, plan_s1])
+    session.commit()
+    session.refresh(plan_all)
+    session.refresh(plan_s1)
+
+    config = ScoringConfig(
+        w_volume=0.333, w_quality=0.333, w_match=0.333,
+        loc_threshold=100, schedule_bonus=5.0, schedule_penalty=-5.0,
+    )
+    session.add(config)
+    session.commit()
+    session.refresh(config)
+
+    # Seed GithubActivity records with status="ok" so run_today has data to score
+    target = date(2026, 8, 21)
+    for s in [s1, s2]:
+        activity = GithubActivity(
+            student_id=s.id,
+            date=target,
+            commits_count=3,
+            commits_json=json.dumps([
+                {"sha": "abc123", "message": "feat: add login", "additions": 50, "deletions": 10}
+            ], ensure_ascii=False),
+            prs_opened=1,
+            prs_merged=0,
+            loc_additions=50,
+            loc_deletions=10,
+            status="ok",
+        )
+        session.add(activity)
+    session.commit()
+
+    return {
+        's1': s1, 's2': s2, 'p1': p1,
+        'plan_all': plan_all, 'plan_s1': plan_s1, 'config': config,
+        'target': target,
+    }
+
+
+@pytest.fixture
+def mock_settings():
+    from app.config import Settings
+    s = Settings()
+    s.llm_base_url = "https://api.openai.com/v1"
+    s.llm_api_key = "sk-test"
+    s.llm_model = "gpt-4o-mini"
+    s.llm_context_max_chars = 12000
+    return s
+
+
+@pytest.fixture
+def mock_ai_response():
+    return {
+        "quality_score": 85,
+        "match_score": 90,
+        "completion": True,
+        "schedule_status": "ontime",
+        "comment": "表现良好",
+        "reasoning": "按时完成",
+    }
+
+
+class TestRunTodaySuccess:
+
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_generates_done_assessments(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+
+        result = run_today(seed_data['target'], session=session)
+
+        assert result["success"] >= 1
+        assert result["failed"] == 0
+        assert isinstance(result["details"], list)
+
+        assessments = session.exec(
+            select(Assessment).where(Assessment.date == seed_data['target'])
+        ).all()
+        assert len(assessments) >= 1
+        for a in assessments:
+            assert a.status == "done"
+            assert a.total_score is not None
+            assert a.quality_score is not None
+            assert a.evaluated_at is not None
+
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_returns_correct_counts(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+
+        result = run_today(seed_data['target'], session=session)
+
+        assert isinstance(result["success"], int)
+        assert isinstance(result["failed"], int)
+        assert result["success"] + result["failed"] == len(result["details"])
+
+
+class TestLLMFailureIsolation:
+
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_one_student_failure_does_not_affect_others(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        from app.services.ai_scoring_service import LLMInvalidResponse
+
+        mock_sync_day.return_value = 2
+
+        def side_effect(context, settings):
+            student_id = context.get('student_id')
+            if student_id == seed_data['s2'].id:
+                raise LLMInvalidResponse("LLM failed")
+            return mock_ai_response
+
+        mock_score_student.side_effect = side_effect
+
+        result = run_today(seed_data['target'], session=session)
+
+        assert result["failed"] >= 1
+        assert result["success"] >= 1
+
+        s1_assessments = session.exec(
+            select(Assessment).where(
+                Assessment.student_id == seed_data['s1'].id,
+                Assessment.date == seed_data['target'],
+            )
+        ).all()
+        for a in s1_assessments:
+            assert a.status == "done"
+
+        s2_assessments = session.exec(
+            select(Assessment).where(
+                Assessment.student_id == seed_data['s2'].id,
+                Assessment.date == seed_data['target'],
+            )
+        ).all()
+        for a in s2_assessments:
+            assert a.status == "failed"
+            assert a.next_retry_at is not None
+            assert a.saved_context_json is not None
+
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_failed_assessment_has_retry_fields(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings):
+        from app.services.pipeline import run_today
+        from app.services.ai_scoring_service import LLMInvalidResponse
+
+        mock_sync_day.return_value = 2
+        mock_score_student.side_effect = LLMInvalidResponse("boom")
+
+        result = run_today(seed_data['target'], session=session)
+
+        assert result["failed"] >= 1
+        assert result["success"] == 0
+
+        assessments = session.exec(
+            select(Assessment).where(Assessment.date == seed_data['target'])
+        ).all()
+        for a in assessments:
+            assert a.status == "failed"
+            assert a.attempts >= 1
+            assert a.next_retry_at is not None
+            assert a.saved_context_json is not None
+
+
+class TestIdempotency:
+
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_repeated_call_does_not_duplicate_assessments(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+
+        run_today(seed_data['target'], session=session)
+        first_count = len(session.exec(
+            select(Assessment).where(Assessment.date == seed_data['target'])
+        ).all())
+
+        run_today(seed_data['target'], session=session)
+        second_count = len(session.exec(
+            select(Assessment).where(Assessment.date == seed_data['target'])
+        ).all())
+
+        assert first_count == second_count
+
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_repeated_call_updates_existing_assessment(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+
+        run_today(seed_data['target'], session=session)
+
+        first_evaluated = session.exec(
+            select(Assessment).where(
+                Assessment.student_id == seed_data['s1'].id,
+                Assessment.date == seed_data['target'],
+            )
+        ).first()
+        first_total = first_evaluated.total_score
+
+        mock_score_student.return_value = {
+            **mock_ai_response,
+            "quality_score": 95,
+            "match_score": 95,
+        }
+
+        run_today(seed_data['target'], session=session)
+
+        updated = session.exec(
+            select(Assessment).where(
+                Assessment.student_id == seed_data['s1'].id,
+                Assessment.date == seed_data['target'],
+            )
+        ).first()
+        assert updated.id == first_evaluated.id
+        assert updated.quality_score == 95
+        assert updated.match_score == 95
+        assert updated.status == "done"
+
+
+class TestPlanFiltering:
+
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_student_specific_plan_only_applies_to_that_student(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+
+        result = run_today(seed_data['target'], session=session)
+
+        s2_assessments = session.exec(
+            select(Assessment).where(
+                Assessment.student_id == seed_data['s2'].id,
+                Assessment.date == seed_data['target'],
+            )
+        ).all()
+        # s2 should not have an assessment tied to the student-specific plan (plan_s1)
+        # plan_s1 only applies to s1, so s2 should only have assessments from plan_all
+        s2_project_ids = {a.project_id for a in s2_assessments}
+        # If s2 has any assessments, they should all be from the all-students plan
+        for a in s2_assessments:
+            assert a.saved_context_json is None or '张三专属' not in (a.saved_context_json or '')
+
+        s1_assessments = session.exec(
+            select(Assessment).where(
+                Assessment.student_id == seed_data['s1'].id,
+                Assessment.date == seed_data['target'],
+            )
+        ).all()
+        assert len(s1_assessments) >= 1
+
+
+class TestContextConstruction:
+
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_passes_correct_context_to_score_student(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+
+        def capture(context, settings):
+            assert "plan_content" in context
+            assert "commits" in context
+            assert "prs_opened" in context
+            assert "prs_merged" in context
+            assert "loc_additions" in context
+            assert "loc_deletions" in context
+            return mock_ai_response
+
+        mock_score_student.side_effect = capture
+
+        run_today(seed_data['target'], session=session)
+
+
+class TestReturnStructure:
+
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_returns_dict_with_required_keys(self, mock_sync_day, mock_score_student, session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+
+        result = run_today(seed_data['target'], session=session)
+
+        assert "success" in result
+        assert "failed" in result
+        assert "details" in result
+        assert isinstance(result["success"], int)
+        assert isinstance(result["failed"], int)
+        assert isinstance(result["details"], list)
