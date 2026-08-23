@@ -1,11 +1,13 @@
 import datetime
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+import tempfile
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
 from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import Student, Project, DailyPlan, Assessment, ScoringConfig
 from app.utils.export import export_daily
+from app.services.import_service import import_students
 from app.services.pipeline import run_today
 from app.middleware.auth import require_auth, login_endpoint, security
 
@@ -36,6 +38,56 @@ def students_page(request: Request, auth_check=Depends(require_auth), session: S
     return templates.TemplateResponse(request, "students.html", {
         "students": student_list,
     })
+
+
+@router.post("/students", response_class=HTMLResponse)
+def import_students_page(
+    request: Request,
+    auth_check=Depends(require_auth),
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="缺少导入文件")
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = tmp.name
+    try:
+        import_students(tmp_path, session=session)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        import os
+        os.unlink(tmp_path)
+    return RedirectResponse(url="/students", status_code=303)
+
+
+@router.post("/config", response_class=HTMLResponse)
+def save_config_page(
+    request: Request,
+    auth_check=Depends(require_auth),
+    w_volume: float = Form(0.333),
+    w_quality: float = Form(0.333),
+    w_match: float = Form(0.333),
+    loc_threshold: int = Form(100),
+    schedule_bonus: float = Form(5.0),
+    schedule_penalty: float = Form(-5.0),
+    session: Session = Depends(get_session),
+):
+    config = session.exec(select(ScoringConfig)).first()
+    if config is None:
+        from app.services.config_seed import seed_config
+        seed_config(session)
+        config = session.exec(select(ScoringConfig)).first()
+    config.w_volume = w_volume
+    config.w_quality = w_quality
+    config.w_match = w_match
+    config.loc_threshold = loc_threshold
+    config.schedule_bonus = schedule_bonus
+    config.schedule_penalty = schedule_penalty
+    session.add(config)
+    session.commit()
+    return RedirectResponse(url="/config", status_code=303)
 
 
 @router.get("/projects", response_class=HTMLResponse)

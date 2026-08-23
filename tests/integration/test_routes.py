@@ -264,3 +264,48 @@ class TestPostRunToday:
     def test_invalid_date_returns_422(self, app):
         resp = app.post("/run-today", params={"date": "not-a-date"})
         assert resp.status_code == 422
+
+
+class TestPostStudentsImport:
+
+    def _make_xlsx(self, tmp_path):
+        from openpyxl import Workbook
+        xlsx = str(tmp_path / "students.xlsx")
+        wb = Workbook()
+        ws = wb.active
+        ws.append(['学生姓名', '邮箱', 'github仓库'])
+        for row in [['张三', 'zs@example.com', 'zs/myrepo'], ['李四', 'ls@example.com', 'ls/myrepo']]:
+            ws.append(row)
+        wb.save(xlsx)
+        return xlsx
+
+    def test_imports_students_from_xlsx(self, app, db_session, tmp_path):
+        xlsx = self._make_xlsx(tmp_path)
+        with open(xlsx, "rb") as f:
+            resp = app.post("/students", files={"file": ("students.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+        assert resp.status_code in (200, 302)
+        from app.models import Student
+        count = len(db_session.exec(select(Student)).all())
+        assert count == 2
+
+    def test_import_without_file_returns_422(self, app):
+        resp = app.post("/students")
+        assert resp.status_code == 422
+
+
+class TestPostConfig:
+
+    def test_updates_scoring_config(self, app, db_session, seed_data):
+        resp = app.post("/config", data={
+            "w_volume": "0.4",
+            "w_quality": "0.3",
+            "w_match": "0.3",
+            "loc_threshold": "200",
+            "schedule_bonus": "2.0",
+            "schedule_penalty": "-3.0",
+        })
+        assert resp.status_code in (200, 302)
+        cfg = db_session.exec(select(ScoringConfig)).first()
+        assert cfg is not None
+        assert abs(cfg.w_volume - 0.4) < 1e-6
+        assert cfg.loc_threshold == 200

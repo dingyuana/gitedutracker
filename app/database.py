@@ -6,6 +6,8 @@ engine = create_engine(settings.database_url, echo=False)
 
 
 def init_db():
+    # 确保模型已导入并注册到 SQLModel.metadata
+    from app import models  # noqa: F401
     SQLModel.metadata.create_all(engine)
 
 

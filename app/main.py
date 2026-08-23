@@ -7,5 +7,6 @@ from app.scheduler import start_scheduler
 app = FastAPI(title="学生 GitHub 日报追踪器")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+app.state.templates = templates
 app.include_router(router)
 start_scheduler()
