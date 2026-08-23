@@ -75,6 +75,47 @@
 - When 应用启动
 - Then 启动 APScheduler 后台定时任务，在指定时间调用 `run_today`
 
+### Scenario 13: 新增项目
+- Given 教师已登录 Web UI
+- When 在项目页 `POST /projects` 提交项目名称（可选描述/起止日期）
+- Then 项目写入数据库并重定向回项目列表
+- And 列表页显示新增项目
+- And 缺少必填「项目名称」时返回 422
+
+### Scenario 14: 新增每日计划
+- Given 教师已登录 Web UI，且至少存在一个项目
+- When 在计划页 `POST /plans` 提交日期、项目、工作计划（可选指定学生）
+- Then 计划写入数据库并重定向回计划列表
+- And 列表页显示新增计划
+- And 缺少必填「日期/项目/工作计划」时返回 422
+
+### Scenario 15: 编辑项目
+- Given 教师已登录 Web UI
+- When `GET /projects/{id}/edit` 打开编辑表单页
+- And `POST /projects/{id}/edit` 提交修改后的名称/描述/日期
+- Then 项目数据更新并重定向回项目列表
+- And 列表页显示更新后的信息
+- And 项目不存在时返回 404
+
+### Scenario 16: 删除项目
+- Given 教师已登录 Web UI
+- When `POST /projects/{id}/delete` 确认删除
+- Then 项目被删除，且其关联的每日计划与评估一并删除
+- And 项目不存在时返回 404
+
+### Scenario 17: 编辑每日计划
+- Given 教师已登录 Web UI
+- When `GET /plans/{id}/edit` 打开编辑表单页
+- And `POST /plans/{id}/edit` 提交修改后的日期/项目/内容/学生
+- Then 计划数据更新并重定向回计划列表
+- And 计划不存在时返回 404
+
+### Scenario 18: 删除每日计划
+- Given 教师已登录 Web UI
+- When `POST /plans/{id}/delete` 确认删除
+- Then 计划被删除并重定向回计划列表
+- And 计划不存在时返回 404
+
 ---
 
 ## 二、接口契约
@@ -216,9 +257,19 @@ def login_endpoint(credentials: HTTPBasicCredentials = Depends(security)) -> JSO
 |------|------|------|
 | GET | `/` | 首页仪表盘 |
 | GET | `/students` | 学生列表页 |
+| POST | `/students` | 上传 xlsx 导入学生 |
 | GET | `/projects` | 项目列表页 |
+| POST | `/projects` | 新增项目（名称/描述/起止日期） |
+| GET | `/projects/{id}/edit` | 项目编辑表单页 |
+| POST | `/projects/{id}/edit` | 更新项目 |
+| POST | `/projects/{id}/delete` | 删除项目（级联删除关联计划与评估） |
 | GET | `/plans` | 计划列表页 |
+| POST | `/plans` | 新增每日计划（日期/项目/内容/可选学生） |
+| GET | `/plans/{id}/edit` | 计划编辑表单页 |
+| POST | `/plans/{id}/edit` | 更新计划 |
+| POST | `/plans/{id}/delete` | 删除计划 |
 | GET | `/config` | 权重配置页 |
+| POST | `/config` | 保存权重配置 |
 | GET | `/results?date=YYYY-MM-DD` | 评测结果页 |
 | GET | `/export?date=YYYY-MM-DD&fmt=xlsx` | 导出 xlsx 下载 |
 | POST | `/run-today?date=YYYY-MM-DD` | 一键评测 |
@@ -374,3 +425,13 @@ def seed_config(session: Session = None) -> None
 | 39 | 定时调度器启动 | Iter 8 | `tests/integration/test_auth_schedule.py` | `test_scheduler_starts_when_auto_run_time_set` |
 | 40 | 配置种子初始化 | Iter 7 | `tests/unit/test_config_seed.py` | `test_seed_creates_default_config`, `test_seed_idempotent_no_duplicate` |
 | 41 | 全部测试通过（pytest） | Iter 8 | 全量 | 165 个测试用例 |
+| 42 | 学生导入 API（POST /students） | Iter 8 | `tests/integration/test_routes.py` | `TestPostStudentsImport` |
+| 43 | 权重保存 API（POST /config） | Iter 8 | `tests/integration/test_routes.py` | `TestPostConfig::test_updates_scoring_config` |
+| 44 | 新增项目 API（POST /projects） | Iter 8 | `tests/integration/test_routes.py` | `TestPostCreateProject` |
+| 45 | 新增计划 API（POST /plans） | Iter 8 | `tests/integration/test_routes.py` | `TestPostCreatePlan` |
+| 46 | 编辑项目（GET/POST /projects/{id}/edit） | Iter 8 | `tests/integration/test_routes.py` | `TestProjectManagement::test_edit_*` |
+| 47 | 删除项目（POST /projects/{id}/delete，级联） | Iter 8 | `tests/integration/test_routes.py` | `TestProjectManagement::test_delete_*` |
+| 48 | 编辑计划（GET/POST /plans/{id}/edit） | Iter 8 | `tests/integration/test_routes.py` | `TestPlanManagement::test_edit_*` |
+| 49 | 删除计划（POST /plans/{id}/delete） | Iter 8 | `tests/integration/test_routes.py` | `TestPlanManagement::test_delete_*` |
+| 50 | 项目/计划页含新增/编辑/删除控件 | Iter 8 | `tests/integration/test_routes.py` | `TestPageHasCreateForms`, `TestProjectManagement::test_list_*`, `TestPlanManagement::test_list_*` |
+| 51 | 全部测试通过（pytest，含运行期维护补丁） | Iter 8 | 全量 | 191 个测试用例 |

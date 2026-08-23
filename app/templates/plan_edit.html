@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}编辑计划 — 学生 GitHub 日报追踪器{% endblock %}
+{% block content %}
+<h1>编辑计划</h1>
+<div class="card">
+    <form action="/plans/{{ plan.id }}/edit" method="POST">
+        <div class="form-group">
+            <label>日期</label>
+            <input type="date" name="date" value="{{ plan.date }}" required>
+        </div>
+        <div class="form-group">
+            <label>项目</label>
+            <select name="project_id" required>
+                {% for p in projects %}
+                <option value="{{ p.id }}" {% if p.id == plan.project_id %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>工作计划</label>
+            <input type="text" name="content" value="{{ plan.content }}" required>
+        </div>
+        <div class="form-group">
+            <label>学生（留空=适用于所有学生）</label>
+            <select name="student_id">
+                <option value="" {% if plan.student_id is none %}selected{% endif %}>全部学生</option>
+                {% for s in students %}
+                <option value="{{ s.id }}" {% if plan.student_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">保存修改</button>
+        <a href="/plans" class="btn">返回</a>
+    </form>
+</div>
+{% endblock %}

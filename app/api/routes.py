@@ -99,14 +99,176 @@ def projects_page(request: Request, auth_check=Depends(require_auth), session: S
     })
 
 
+@router.post("/projects", response_class=HTMLResponse)
+def create_project_page(
+    request: Request,
+    auth_check=Depends(require_auth),
+    name: str = Form(...),
+    description: str = Form(""),
+    start_date: str = Form(""),
+    end_date: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    project = Project(name=name.strip())
+    if description.strip():
+        project.description = description.strip()
+    if start_date.strip():
+        project.start_date = datetime.date.fromisoformat(start_date.strip())
+    if end_date.strip():
+        project.end_date = datetime.date.fromisoformat(end_date.strip())
+    session.add(project)
+    session.commit()
+    return RedirectResponse(url="/projects", status_code=303)
+
+
+@router.get("/projects/{project_id}/edit", response_class=HTMLResponse)
+def edit_project_page(
+    request: Request,
+    project_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    templates = request.app.state.templates
+    return templates.TemplateResponse(request, "project_edit.html", {"project": project})
+
+
+@router.post("/projects/{project_id}/edit", response_class=HTMLResponse)
+def update_project_page(
+    request: Request,
+    project_id: int,
+    auth_check=Depends(require_auth),
+    name: str = Form(...),
+    description: str = Form(""),
+    start_date: str = Form(""),
+    end_date: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    project.name = name.strip()
+    project.description = description.strip() if description.strip() else None
+    project.start_date = datetime.date.fromisoformat(start_date.strip()) if start_date.strip() else None
+    project.end_date = datetime.date.fromisoformat(end_date.strip()) if end_date.strip() else None
+    session.add(project)
+    session.commit()
+    return RedirectResponse(url="/projects", status_code=303)
+
+
+@router.post("/projects/{project_id}/delete", response_class=HTMLResponse)
+def delete_project_page(
+    request: Request,
+    project_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    from app.models import GithubActivity
+    for plan in session.exec(select(DailyPlan).where(DailyPlan.project_id == project_id)).all():
+        session.delete(plan)
+    for assessment in session.exec(select(Assessment).where(Assessment.project_id == project_id)).all():
+        session.delete(assessment)
+    session.delete(project)
+    session.commit()
+    return RedirectResponse(url="/projects", status_code=303)
+
+
+@router.post("/plans", response_class=HTMLResponse)
+def create_plan_page(
+    request: Request,
+    auth_check=Depends(require_auth),
+    date: str = Form(...),
+    project_id: int = Form(...),
+    content: str = Form(...),
+    student_id: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    plan = DailyPlan(
+        date=datetime.date.fromisoformat(date),
+        project_id=project_id,
+        content=content.strip(),
+        student_id=int(student_id) if student_id.strip() else None,
+    )
+    session.add(plan)
+    session.commit()
+    return RedirectResponse(url="/plans", status_code=303)
+
+
+@router.get("/plans/{plan_id}/edit", response_class=HTMLResponse)
+def edit_plan_page(
+    request: Request,
+    plan_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    plan = session.get(DailyPlan, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="计划不存在")
+    projects = session.exec(select(Project)).all()
+    students = session.exec(select(Student)).all()
+    templates = request.app.state.templates
+    return templates.TemplateResponse(request, "plan_edit.html", {
+        "plan": plan,
+        "projects": projects,
+        "students": students,
+    })
+
+
+@router.post("/plans/{plan_id}/edit", response_class=HTMLResponse)
+def update_plan_page(
+    request: Request,
+    plan_id: int,
+    auth_check=Depends(require_auth),
+    date: str = Form(...),
+    project_id: int = Form(...),
+    content: str = Form(...),
+    student_id: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    plan = session.get(DailyPlan, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="计划不存在")
+    plan.date = datetime.date.fromisoformat(date)
+    plan.project_id = project_id
+    plan.content = content.strip()
+    plan.student_id = int(student_id) if student_id.strip() else None
+    session.add(plan)
+    session.commit()
+    return RedirectResponse(url="/plans", status_code=303)
+
+
+@router.post("/plans/{plan_id}/delete", response_class=HTMLResponse)
+def delete_plan_page(
+    request: Request,
+    plan_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    plan = session.get(DailyPlan, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="计划不存在")
+    session.delete(plan)
+    session.commit()
+    return RedirectResponse(url="/plans", status_code=303)
+
+
 @router.get("/plans", response_class=HTMLResponse)
 def plans_page(request: Request, auth_check=Depends(require_auth), session: Session = Depends(get_session)):
     plans = session.exec(
         select(DailyPlan).order_by(DailyPlan.date.desc())
     ).all()
+    projects = session.exec(select(Project)).all()
+    students = session.exec(select(Student)).all()
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "plans.html", {
         "plans": plans,
+        "projects": projects,
+        "students": students,
     })
 
 

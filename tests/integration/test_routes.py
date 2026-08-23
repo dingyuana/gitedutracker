@@ -309,3 +309,178 @@ class TestPostConfig:
         assert cfg is not None
         assert abs(cfg.w_volume - 0.4) < 1e-6
         assert cfg.loc_threshold == 200
+
+
+class TestPostCreateProject:
+
+    def test_creates_project(self, app, db_session):
+        resp = app.post("/projects", data={
+            "name": "新项目B",
+            "description": "测试项目",
+            "start_date": "2026-09-01",
+            "end_date": "2026-12-31",
+        })
+        assert resp.status_code in (200, 302)
+        projects = db_session.exec(select(Project)).all()
+        assert any(p.name == "新项目B" for p in projects)
+        created = [p for p in projects if p.name == "新项目B"][0]
+        assert created.description == "测试项目"
+        assert str(created.start_date) == "2026-09-01"
+        assert str(created.end_date) == "2026-12-31"
+
+    def test_creates_project_without_optional_fields(self, app, db_session):
+        resp = app.post("/projects", data={"name": "最小项目"})
+        assert resp.status_code in (200, 302)
+        projects = db_session.exec(select(Project)).all()
+        assert any(p.name == "最小项目" for p in projects)
+
+    def test_missing_name_returns_422(self, app):
+        resp = app.post("/projects", data={})
+        assert resp.status_code == 422
+
+
+class TestPostCreatePlan:
+
+    def test_creates_plan(self, app, db_session, seed_data):
+        resp = app.post("/plans", data={
+            "date": "2026-08-24",
+            "project_id": str(seed_data['p1'].id),
+            "content": "实现新功能",
+            "student_id": "",
+        })
+        assert resp.status_code in (200, 302)
+        plans = db_session.exec(select(DailyPlan)).all()
+        assert any(p.content == "实现新功能" for p in plans)
+        created = [p for p in plans if p.content == "实现新功能"][0]
+        assert str(created.date) == "2026-08-24"
+        assert created.project_id == seed_data['p1'].id
+        assert created.student_id is None
+
+    def test_creates_plan_for_specific_student(self, app, db_session, seed_data):
+        resp = app.post("/plans", data={
+            "date": "2026-08-24",
+            "project_id": str(seed_data['p1'].id),
+            "content": "张三专属任务",
+            "student_id": str(seed_data['s1'].id),
+        })
+        assert resp.status_code in (200, 302)
+        plans = db_session.exec(select(DailyPlan)).all()
+        created = [p for p in plans if p.content == "张三专属任务"][0]
+        assert created.student_id == seed_data['s1'].id
+
+    def test_missing_content_returns_422(self, app, seed_data):
+        resp = app.post("/plans", data={"date": "2026-08-24", "project_id": str(seed_data['p1'].id)})
+        assert resp.status_code == 422
+
+
+class TestPageHasCreateForms:
+
+    def test_projects_page_has_create_form(self, app):
+        resp = app.get("/projects")
+        assert resp.status_code == 200
+        assert "新增项目" in resp.text
+        assert 'action="/projects" method="POST"' in resp.text
+
+    def test_plans_page_has_create_form(self, app, seed_data):
+        resp = app.get("/plans")
+        assert resp.status_code == 200
+        assert "新增计划" in resp.text
+        assert 'action="/plans" method="POST"' in resp.text
+
+
+class TestProjectManagement:
+
+    def test_list_has_edit_delete_buttons(self, app, seed_data):
+        resp = app.get("/projects")
+        assert resp.status_code == 200
+        assert "编辑" in resp.text
+        assert "删除" in resp.text
+
+    def test_edit_page_returns_200(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}/edit")
+        assert resp.status_code == 200
+        assert "项目A" in resp.text
+
+    def test_edit_updates_project(self, app, db_session, seed_data):
+        pid = seed_data['p1'].id
+        resp = app.post(f"/projects/{pid}/edit", data={
+            "name": "项目A-改",
+            "description": "新描述",
+            "start_date": "2026-09-01",
+            "end_date": "",
+        })
+        assert resp.status_code in (200, 302)
+        db_session.expire_all()
+        updated = db_session.get(Project, pid)
+        assert updated.name == "项目A-改"
+        assert updated.description == "新描述"
+        assert str(updated.start_date) == "2026-09-01"
+
+    def test_edit_missing_name_returns_422(self, app, seed_data):
+        resp = app.post(f"/projects/{seed_data['p1'].id}/edit", data={"description": "x"})
+        assert resp.status_code == 422
+
+    def test_edit_nonexistent_returns_404(self, app):
+        resp = app.get("/projects/9999/edit")
+        assert resp.status_code == 404
+
+    def test_delete_removes_project(self, app, db_session, seed_data):
+        pid = seed_data['p1'].id
+        resp = app.post(f"/projects/{pid}/delete")
+        assert resp.status_code in (200, 302)
+        db_session.expire_all()
+        assert db_session.get(Project, pid) is None
+
+    def test_delete_cascades_plans(self, app, db_session, seed_data):
+        pid = seed_data['p1'].id
+        app.post(f"/projects/{pid}/delete")
+        plans = db_session.exec(select(DailyPlan)).all()
+        assert all(p.project_id != pid for p in plans)
+
+    def test_delete_nonexistent_returns_404(self, app):
+        resp = app.post("/projects/9999/delete")
+        assert resp.status_code == 404
+
+
+class TestPlanManagement:
+
+    def test_list_has_edit_delete_buttons(self, app, seed_data):
+        resp = app.get("/plans")
+        assert resp.status_code == 200
+        assert "编辑" in resp.text
+        assert "删除" in resp.text
+
+    def test_edit_page_returns_200(self, app, seed_data):
+        resp = app.get(f"/plans/{seed_data['plan_all'].id}/edit")
+        assert resp.status_code == 200
+        assert "完成登录模块" in resp.text
+
+    def test_edit_updates_plan(self, app, db_session, seed_data):
+        plan_id = seed_data['plan_all'].id
+        resp = app.post(f"/plans/{plan_id}/edit", data={
+            "date": "2026-08-22",
+            "project_id": str(seed_data['p1'].id),
+            "content": "完成登录模块-改",
+            "student_id": str(seed_data['s1'].id),
+        })
+        assert resp.status_code in (200, 302)
+        db_session.expire_all()
+        updated = db_session.get(DailyPlan, plan_id)
+        assert updated.content == "完成登录模块-改"
+        assert str(updated.date) == "2026-08-22"
+        assert updated.student_id == seed_data['s1'].id
+
+    def test_edit_nonexistent_returns_404(self, app):
+        resp = app.get("/plans/9999/edit")
+        assert resp.status_code == 404
+
+    def test_delete_removes_plan(self, app, db_session, seed_data):
+        plan_id = seed_data['plan_all'].id
+        resp = app.post(f"/plans/{plan_id}/delete")
+        assert resp.status_code in (200, 302)
+        db_session.expire_all()
+        assert db_session.get(DailyPlan, plan_id) is None
+
+    def test_delete_nonexistent_returns_404(self, app):
+        resp = app.post("/plans/9999/delete")
+        assert resp.status_code == 404

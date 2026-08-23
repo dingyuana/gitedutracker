@@ -3,11 +3,42 @@
 {% block content %}
 <h1>计划列表</h1>
 <div class="card">
+    <h3>新增计划</h3>
+    <form action="/plans" method="POST">
+        <div class="form-group">
+            <label>日期</label>
+            <input type="date" name="date" required>
+        </div>
+        <div class="form-group">
+            <label>项目</label>
+            <select name="project_id" required>
+                {% for p in projects %}
+                <option value="{{ p.id }}">{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>工作计划</label>
+            <input type="text" name="content" required>
+        </div>
+        <div class="form-group">
+            <label>学生（留空=适用于所有学生）</label>
+            <select name="student_id">
+                <option value="">全部学生</option>
+                {% for s in students %}
+                <option value="{{ s.id }}">{{ s.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">新增计划</button>
+    </form>
+</div>
+<div class="card">
     <h3>每日计划</h3>
     {% if plans %}
     <table>
         <thead>
-            <tr><th>日期</th><th>项目</th><th>内容</th><th>学生</th></tr>
+            <tr><th>日期</th><th>项目</th><th>内容</th><th>学生</th><th>操作</th></tr>
         </thead>
         <tbody>
             {% for plan in plans %}
@@ -16,6 +47,12 @@
                 <td>{{ plan.project_id }}</td>
                 <td>{{ plan.content }}</td>
                 <td>{{ plan.student_id or "全部" }}</td>
+                <td>
+                    <a href="/plans/{{ plan.id }}/edit" class="btn btn-small">编辑</a>
+                    <form action="/plans/{{ plan.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('确定删除该计划？')">
+                        <button type="submit" class="btn btn-small btn-danger">删除</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}编辑项目 — 学生 GitHub 日报追踪器{% endblock %}
+{% block content %}
+<h1>编辑项目</h1>
+<div class="card">
+    <form action="/projects/{{ project.id }}/edit" method="POST">
+        <div class="form-group">
+            <label>项目名称</label>
+            <input type="text" name="name" value="{{ project.name }}" required>
+        </div>
+        <div class="form-group">
+            <label>描述</label>
+            <input type="text" name="description" value="{{ project.description or '' }}">
+        </div>
+        <div class="form-group">
+            <label>开始日期</label>
+            <input type="date" name="start_date" value="{{ project.start_date or '' }}">
+        </div>
+        <div class="form-group">
+            <label>结束日期</label>
+            <input type="date" name="end_date" value="{{ project.end_date or '' }}">
+        </div>
+        <button type="submit" class="btn btn-primary">保存修改</button>
+        <a href="/projects" class="btn">返回</a>
+    </form>
+</div>
+{% endblock %}
