@@ -245,3 +245,22 @@ class TestColumnAliasMapping:
         assert PLAN_COLUMN_ALIASES['plan_content'] == 'content'
         assert PLAN_COLUMN_ALIASES['学生姓名'] == 'student_name'
         assert PLAN_COLUMN_ALIASES['student_name'] == 'student_name'
+
+class TestStudentImportIdempotent:
+
+    def test_reimport_same_email_updates_not_duplicates(self, session, tmp_path):
+        from app.services.import_service import import_students
+        xlsx = str(tmp_path / "students_update.xlsx")
+        _write_xlsx(xlsx, ['学生姓名', '邮箱', 'github仓库'], [
+            ['张三', 'zhangsan@example.com', 'zhangsan/myrepo'],
+        ])
+        assert import_students(xlsx, session=session) == 1
+
+        _write_xlsx(xlsx, ['学生姓名', '邮箱', 'github仓库'], [
+            ['张三', 'zhangsan@example.com', 'zhangsan/new-repo'],
+        ])
+        assert import_students(xlsx, session=session) == 1
+
+        students = session.exec(select(Student)).all()
+        assert len(students) == 1
+        assert students[0].github_repo == 'zhangsan/new-repo'

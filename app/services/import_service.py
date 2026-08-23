@@ -80,8 +80,18 @@ def import_students(filepath: str, session: Session = None) -> int:
         }
         if 'student_no' in df.columns and not pd.isna(row.get('student_no')):
             student_data['student_no'] = str(row['student_no']).strip()
-        s = Student.model_validate(student_data)
-        session.add(s)
+        existing = session.exec(
+            select(Student).where(Student.email == student_data['email'])
+        ).first()
+        if existing is not None:
+            existing.name = student_data['name']
+            existing.github_repo = student_data['github_repo']
+            if 'student_no' in student_data:
+                existing.student_no = student_data['student_no']
+            session.add(existing)
+        else:
+            s = Student.model_validate(student_data)
+            session.add(s)
         count += 1
     session.commit()
     return count
