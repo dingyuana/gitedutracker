@@ -13,6 +13,7 @@ class StudentBase(SQLModel):
     email: str = Field(min_length=1, unique=True)
     github_repo: str = Field(min_length=1)
     github_url: Optional[str] = None
+    student_no: Optional[str] = None
     created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator('github_repo', mode='before')

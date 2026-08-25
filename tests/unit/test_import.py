@@ -300,3 +300,29 @@ class TestStudentImportIdempotent:
         students = session.exec(select(Student)).all()
         assert len(students) == 1
         assert students[0].github_repo == 'zhangsan/new-repo'
+
+    def test_import_students_persists_student_no(self, session, tmp_path):
+        from app.services.import_service import import_students
+        xlsx = str(tmp_path / "students_no.xlsx")
+        _write_xlsx(xlsx, ['姓名', '个人邮箱地址', 'github仓库地址', '学号'], [
+            ['钱七', 'qq@example.com', 'qq/myrepo', '25371007'],
+        ])
+        count = import_students(xlsx, session=session)
+        assert count == 1
+        s = session.exec(select(Student)).first()
+        assert s.student_no == '25371007'
+
+    def test_reimport_updates_student_no(self, session, tmp_path):
+        from app.services.import_service import import_students
+        xlsx = str(tmp_path / "students_no2.xlsx")
+        _write_xlsx(xlsx, ['姓名', '个人邮箱地址', 'github仓库地址', '学号'], [
+            ['孙八', 'sb@example.com', 'sb/myrepo', '111'],
+        ])
+        import_students(xlsx, session=session)
+        _write_xlsx(xlsx, ['姓名', '个人邮箱地址', 'github仓库地址', '学号'], [
+            ['孙八', 'sb@example.com', 'sb/myrepo', '222'],
+        ])
+        import_students(xlsx, session=session)
+        s = session.exec(select(Student)).first()
+        assert len(session.exec(select(Student)).all()) == 1
+        assert s.student_no == '222'

@@ -14,6 +14,9 @@ def _migrate_sqlite():
         if 'project_id' not in cols:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE student ADD COLUMN project_id INTEGER"))
+        if 'student_no' not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE student ADD COLUMN student_no VARCHAR"))
     if 'project' in tables:
         cols = {c['name'] for c in inspector.get_columns('project')}
         if 'status' not in cols:
