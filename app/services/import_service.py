@@ -66,16 +66,23 @@ def import_students(filepath: str, session: Session = None) -> int:
     _ensure_columns(df, ['name', 'email', 'github_repo'], '学生表', col_names={'name': '学生姓名'})
 
     count = 0
+    skip_log = []
     for idx, row in df.iterrows():
         row_num = idx + 2  # Excel 行号（含表头）
+        name = row.get('name')
+        if pd.isna(name) or str(name).strip() == '':
+            skip_log.append(f"第 {row_num} 行：缺少姓名，跳过")
+            continue
         email = row.get('email')
         if pd.isna(email) or str(email).strip() == '':
-            raise ValueError(f"学生表第 {row_num} 行缺少必填列「邮箱」")
+            skip_log.append(f"第 {row_num} 行（{str(name).strip()}）：缺少邮箱，跳过")
+            continue
         repo = row.get('github_repo')
         if pd.isna(repo) or str(repo).strip() == '':
-            raise ValueError(f"学生表第 {row_num} 行缺少必填列「github仓库」")
+            skip_log.append(f"第 {row_num} 行（{str(name).strip()}）：缺少github仓库，跳过")
+            continue
         student_data = {
-            'name': str(row['name']).strip(),
+            'name': str(name).strip(),
             'email': str(email).strip(),
             'github_repo': str(repo).strip(),
         }
@@ -95,6 +102,9 @@ def import_students(filepath: str, session: Session = None) -> int:
             session.add(s)
         count += 1
     session.commit()
+    if skip_log:
+        import logging
+        logging.getLogger(__name__).warning("学生导入跳过行: %s", "; ".join(skip_log))
     return count
 
 

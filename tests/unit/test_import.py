@@ -72,14 +72,14 @@ class TestStudentImport:
         with pytest.raises(ValueError, match='邮箱'):
             import_students(xlsx, session=session)
 
-    def test_import_students_empty_email_raises(self, session, tmp_path):
+    def test_import_students_empty_email_skips(self, session, tmp_path):
         from app.services.import_service import import_students
         xlsx = str(tmp_path / "students_empty_email.xlsx")
         _write_xlsx(xlsx, ['学生姓名', '邮箱', 'github仓库'], [
             ['张三', '', 'zhangsan/myrepo'],
         ])
-        with pytest.raises(ValueError, match='邮箱'):
-            import_students(xlsx, session=session)
+        count = import_students(xlsx, session=session)
+        assert count == 0
 
     def test_import_students_missing_required_column_raises(self, session, tmp_path):
         from app.services.import_service import import_students
