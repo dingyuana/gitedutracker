@@ -47,6 +47,7 @@ class Project(SQLModel, table=True):
     description: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    status: str = Field(default='active')
     created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -105,4 +106,13 @@ class ScoringConfig(SQLModel, table=True):
     loc_threshold: int = Field(default=100)
     schedule_bonus: float = Field(default=5.0)
     schedule_penalty: float = Field(default=-5.0)
+    updated_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class LlmConfig(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    llm_base_url: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_context_max_chars: Optional[int] = None
     updated_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))

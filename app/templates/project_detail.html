@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — 日程 — 学生 GitHub 日报追踪器{% endblock %}
+{% block content %}
+<h1>
+    {{ project.name }}
+    {% if day_label %}<small class="badge">{{ day_label }}</small>{% endif %}
+    {% if project.status == "done" %}<small class="badge badge-done">已完成</small>{% endif %}
+</h1>
+
+{% if progress_pct is not none %}
+<div class="progress-wrap" style="max-width:480px">
+    <div class="progress-bar" style="width: {{ progress_pct }}%"></div>
+</div>
+{% endif %}
+
+{% if project.description %}<p>{{ project.description }}</p>{% endif %}
+
+<div class="card-actions">
+    <a href="/projects/{{ project.id }}/edit" class="btn btn-small">编辑</a>
+    {% if project.status == "done" %}
+    <form action="/projects/{{ project.id }}/reopen" method="POST" style="display:inline">
+        <button type="submit" class="btn btn-small btn-success">重开</button>
+    </form>
+    {% else %}
+    <form action="/projects/{{ project.id }}/complete" method="POST" style="display:inline" onsubmit="return confirm('标记为已完成？')">
+        <button type="submit" class="btn btn-small btn-success">完成</button>
+    </form>
+    {% endif %}
+    <a href="/" class="btn btn-small">返回看板</a>
+</div>
+
+<div class="card">
+    <h3>学生（{{ students|length }} 人）</h3>
+    {% if students %}
+    <div class="chip-row">
+        {% for s in students %}
+        <span class="chip">{{ s.name }}</span>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">暂无学生，去「学生」页导入时选择本项目归属</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h3>新增日程</h3>
+    <form action="/plans" method="POST" class="inline-form">
+        <input type="hidden" name="project_id" value="{{ project.id }}">
+        <label>日期 <input type="date" name="date" value="{{ today }}" required></label>
+        <input type="text" name="content" placeholder="当日工作计划/教程任务" required>
+        <select name="student_id">
+            <option value="">全体学生</option>
+            {% for s in students %}
+            <option value="{{ s.id }}">{{ s.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary btn-small">添加</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>日程（{{ plans|length }} 条）</h3>
+    {% if plans %}
+    <table>
+        <thead><tr><th>日期</th><th>内容</th><th>对象</th><th>操作</th></tr></thead>
+        <tbody>
+        {% for plan in plans %}
+            <tr>
+                <td>{{ plan.date }}</td>
+                <td>{{ plan.content }}</td>
+                <td>{{ plan.student_id or "全体" }}</td>
+                <td>
+                    <a href="/plans/{{ plan.id }}/edit" class="btn btn-small">编辑</a>
+                    <form action="/plans/{{ plan.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('删除该日程？')">
+                        <button type="submit" class="btn btn-small btn-danger">删除</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">暂无日程，用上方表单添加每日计划</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h3>评测记录（分数与评语）</h3>
+    {% if assessments_by_date %}
+        {% for a_date, items in assessments_by_date %}
+        <h4>📅 {{ a_date }} <small style="color:#888">({{ items|length }} 条)</small></h4>
+        <table>
+            <thead><tr><th>学生</th><th>总分</th><th>AI 评语</th></tr></thead>
+            <tbody>
+            {% for item in items %}
+                <tr>
+                    <td>{{ item.student_name }}</td>
+                    <td><strong>{{ item.total_score if item.total_score is not none else "—" }}</strong></td>
+                    <td class="comment-cell">{{ item.comment or "—" }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endfor %}
+    {% else %}
+    <p class="empty">暂无评测记录。运行「今日评测」后，每天的分数与评语会保存在这里供查询</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -16,7 +16,9 @@
 |------|------|
 | 📥 **三表导入** | 学生（含邮箱+仓库，可归属项目）、项目、每日计划，支持中英文列名 |
 | 👥 **项目分组** | 学生归属项目，计划/评测按项目隔离，不同项目互不串评 |
-| 🗓️ **项目看板** | 首页按项目展示状态：第几天/共几天、今日计划、今日评测完成度 |
+| 🗓️ **项目看板** | 首页即管理台：新建/编辑/**完成**/重开/删除项目；点卡片进日程详情 |
+| 🔍 **评语查询** | 每日分数与 AI 评语按项目、按日期归档，随时回查 |
+| ⚙️ **LLM 前端可配** | 模型名 / Base URL / API Key / 上下文长度在「配置」页修改，立即生效（DB 优先于 .env） |
 | 🛠️ **项目管理** | 新增、编辑、删除项目（名称/描述/起止日期） |
 | 📅 **计划管理** | 新增、编辑、删除每日计划（日期/项目/内容/指定学生） |
 | 🔄 **GitHub 同步** | 每日抓取 commits / PRs / 代码行数（additions/deletions） |
@@ -159,7 +161,8 @@ app/
 │   ├── pipeline.py          # 评测流水线串联
 │   ├── retry_service.py     # 后台重试 reaper
 │   ├── email_service.py     # 邮件发送
-│   └── config_seed.py       # 默认权重种子
+│   ├── config_seed.py       # 默认权重种子
+│   └── settings_service.py  # LLM 配置（DB 优先于 .env）
 ├── api/                 # HTTP 路由
 │   └── routes.py
 ├── middleware/          # 认证中间件
@@ -167,12 +170,12 @@ app/
 ├── scheduler.py         # APScheduler 定时任务
 ├── database.py          # 数据库连接
 ├── templates/           # Jinja2 模板
-│   ├── base.html
-│   ├── index.html       # 看板
-│   ├── students.html    # 学生列表 + 导入
-│   ├── projects.html    # 项目列表
+│   ├── base.html        # 全局布局 + 样式（现代仪表盘风）
+│   ├── index.html       # 项目看板（含新建/编辑/完成/删除）
+│   ├── project_detail.html  # 项目日程与评语查询
+│   ├── students.html    # 学生列表 + 导入（支持归属项目）
 │   ├── plans.html       # 计划列表
-│   ├── config.html      # 权重配置
+│   ├── config.html      # 权重与 LLM 配置
 │   └── results.html     # 评测结果
 └── static/              # 静态资源
 ```

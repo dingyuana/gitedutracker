@@ -20,11 +20,13 @@ def index(request: Request, auth_check=Depends(require_auth), session: Session =
     today = _date.today()
     projects = session.exec(select(Project)).all()
 
-    cards = []
+    active_cards = []
+    done_cards = []
     for p in projects:
+        progress_pct = None
         if p.start_date and today < p.start_date:
             day_label = "未开始"
-        elif p.start_date and p.end_date and today > p.end_date:
+        elif p.end_date and today > p.end_date:
             day_label = "已结束"
         elif p.start_date:
             day_n = (today - p.start_date).days + 1
@@ -32,6 +34,7 @@ def index(request: Request, auth_check=Depends(require_auth), session: Session =
             if p.end_date:
                 total_days = (p.end_date - p.start_date).days + 1
                 day_label += f" / 共{total_days}天"
+                progress_pct = round(day_n / total_days * 100)
         else:
             day_label = "未排期"
 
@@ -43,17 +46,23 @@ def index(request: Request, auth_check=Depends(require_auth), session: Session =
         ).all()
         done_today = [a for a in assessed_today if a.status == "done"]
 
-        cards.append({
+        card = {
             "project": p,
             "day_label": day_label,
+            "progress_pct": progress_pct,
             "plan_count": len(plans_today),
             "plan_summary": plans_today[0].content if plans_today else None,
             "assessed_count": len(done_today),
-        })
+        }
+        if getattr(p, "status", "active") == "done":
+            done_cards.append(card)
+        else:
+            active_cards.append(card)
 
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "index.html", {
-        "cards": cards,
+        "active_cards": active_cards,
+        "done_cards": done_cards,
         "today": today,
     })
 
@@ -123,12 +132,123 @@ def save_config_page(
 
 
 @router.get("/projects", response_class=HTMLResponse)
-def projects_page(request: Request, auth_check=Depends(require_auth), session: Session = Depends(get_session)):
-    project_list = session.exec(select(Project)).all()
+def projects_page():
+    return RedirectResponse(url="/", status_code=303)
+
+
+@router.post("/projects", response_class=HTMLResponse)
+def create_project_page(
+    request: Request,
+    auth_check=Depends(require_auth),
+    name: str = Form(...),
+    description: str = Form(""),
+    start_date: str = Form(""),
+    end_date: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    project = Project(name=name.strip())
+    if description.strip():
+        project.description = description.strip()
+    if start_date.strip():
+        project.start_date = datetime.date.fromisoformat(start_date.strip())
+    if end_date.strip():
+        project.end_date = datetime.date.fromisoformat(end_date.strip())
+    project.status = "active"
+    session.add(project)
+    session.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@router.get("/projects/{project_id}", response_class=HTMLResponse)
+def project_detail_page(
+    request: Request,
+    project_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    from datetime import date as _today
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    today = _today.today()
+    students = session.exec(select(Student).where(Student.project_id == project_id)).all()
+    plans = session.exec(
+        select(DailyPlan).where(DailyPlan.project_id == project_id)
+    ).all()
+    plans_sorted = sorted(plans, key=lambda p: p.date, reverse=True)
+
+    assessments = session.exec(
+        select(Assessment).where(Assessment.project_id == project_id)
+    ).all()
+    by_date: dict = {}
+    for a in assessments:
+        if a.status != "done":
+            continue
+        student = session.get(Student, a.student_id)
+        by_date.setdefault(a.date, []).append({
+            "student_name": student.name if student else f"#{a.student_id}",
+            "total_score": a.total_score,
+            "comment": a.comment,
+        })
+    assessments_by_date = sorted(by_date.items(), key=lambda kv: kv[0], reverse=True)
+
+    day_label = None
+    progress_pct = None
+    if project.start_date:
+        if today < project.start_date:
+            day_label = "未开始"
+        elif project.end_date and today > project.end_date:
+            day_label = "已结束"
+        else:
+            day_n = (today - project.start_date).days + 1
+            day_label = f"第{day_n}天"
+            if project.end_date:
+                total_days = (project.end_date - project.start_date).days + 1
+                day_label += f" / 共{total_days}天"
+                progress_pct = round(day_n / total_days * 100)
+
     templates = request.app.state.templates
-    return templates.TemplateResponse(request, "projects.html", {
-        "projects": project_list,
+    return templates.TemplateResponse(request, "project_detail.html", {
+        "project": project,
+        "students": students,
+        "plans": plans_sorted,
+        "assessments_by_date": assessments_by_date,
+        "day_label": day_label,
+        "progress_pct": progress_pct,
     })
+
+
+@router.post("/projects/{project_id}/complete", response_class=HTMLResponse)
+def complete_project(
+    request: Request,
+    project_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    project.status = "done"
+    session.add(project)
+    session.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@router.post("/projects/{project_id}/reopen", response_class=HTMLResponse)
+def reopen_project(
+    request: Request,
+    project_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    project.status = "active"
+    session.add(project)
+    session.commit()
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.post("/projects", response_class=HTMLResponse)
@@ -150,7 +270,7 @@ def create_project_page(
         project.end_date = datetime.date.fromisoformat(end_date.strip())
     session.add(project)
     session.commit()
-    return RedirectResponse(url="/projects", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.get("/projects/{project_id}/edit", response_class=HTMLResponse)
@@ -187,7 +307,7 @@ def update_project_page(
     project.end_date = datetime.date.fromisoformat(end_date.strip()) if end_date.strip() else None
     session.add(project)
     session.commit()
-    return RedirectResponse(url="/projects", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.post("/projects/{project_id}/delete", response_class=HTMLResponse)
@@ -207,7 +327,7 @@ def delete_project_page(
         session.delete(assessment)
     session.delete(project)
     session.commit()
-    return RedirectResponse(url="/projects", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.post("/plans", response_class=HTMLResponse)
@@ -310,10 +430,42 @@ def config_page(request: Request, auth_check=Depends(require_auth), session: Ses
     if config is None:
         from app.services.config_seed import seed_config
         config = seed_config(session)
+    from app.services.settings_service import get_llm_config
+    from app.config import get_settings
+    llm_row = get_llm_config(session)
+    env = get_settings()
+    llm_current = {
+        "llm_model": (llm_row.llm_model if llm_row and llm_row.llm_model else env.llm_model),
+        "llm_base_url": (llm_row.llm_base_url if llm_row and llm_row.llm_base_url else env.llm_base_url),
+        "llm_context_max_chars": (llm_row.llm_context_max_chars if llm_row and llm_row.llm_context_max_chars else env.llm_context_max_chars),
+        "has_api_key": bool((llm_row.llm_api_key if llm_row else "") or env.llm_api_key),
+    }
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "config.html", {
         "config": config,
+        "llm": llm_current,
     })
+
+
+@router.post("/config/llm", response_class=HTMLResponse)
+def save_llm_config_page(
+    request: Request,
+    auth_check=Depends(require_auth),
+    llm_model: str = Form(""),
+    llm_base_url: str = Form(""),
+    llm_api_key: str = Form(""),
+    llm_context_max_chars: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    from app.services.settings_service import save_llm_config
+    save_llm_config(
+        session,
+        llm_model=llm_model,
+        llm_base_url=llm_base_url,
+        llm_api_key=llm_api_key,
+        llm_context_max_chars=int(llm_context_max_chars) if llm_context_max_chars.strip().isdigit() else None,
+    )
+    return RedirectResponse(url="/config", status_code=303)
 
 
 @router.get("/results", response_class=HTMLResponse)

@@ -32,4 +32,30 @@
         <button type="submit" class="btn btn-primary">保存配置</button>
     </form>
 </div>
+
+<div class="card">
+    <h3>LLM 设置</h3>
+    <p style="color:#5f6368;font-size:0.85rem;margin-top:0">
+        此处配置优先于 .env 生效。API Key 留空表示保持不变；不填的项沿用当前值。
+    </p>
+    <form method="POST" action="/config/llm">
+        <div class="form-group">
+            <label>模型名称（如 doubao-seed-1-6 / gpt-4o-mini）</label>
+            <input type="text" name="llm_model" value="{{ llm.llm_model }}" placeholder="模型 ID">
+        </div>
+        <div class="form-group">
+            <label>接口地址 Base URL</label>
+            <input type="text" name="llm_base_url" value="{{ llm.llm_base_url }}" placeholder="https://.../api/v3">
+        </div>
+        <div class="form-group">
+            <label>API Key {% if llm.has_api_key %}<span class="badge badge-done">已设置</span>{% else %}<span style="color:#d93025;font-size:0.8rem">未设置</span>{% endif %}</label>
+            <input type="password" name="llm_api_key" value="" placeholder="留空保持现有 Key 不变">
+        </div>
+        <div class="form-group">
+            <label>上下文最大字符数</label>
+            <input type="number" name="llm_context_max_chars" value="{{ llm.llm_context_max_chars }}">
+        </div>
+        <button type="submit" class="btn btn-primary">保存 LLM 设置</button>
+    </form>
+</div>
 {% endblock %}

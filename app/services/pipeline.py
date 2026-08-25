@@ -6,12 +6,12 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from app.config import get_settings
 from app.models import Assessment, DailyPlan, GithubActivity, ScoringConfig, Student
 from app.services.ai_scoring_service import LLMInvalidResponse, score_student
 from app.services.github_snapshot import sync_day
 from app.services.scoring_engine import compute_final
 from app.services.email_service import send_daily_comments
+from app.services.settings_service import get_effective_settings
 
 
 def run_today(target_date: date, session: Optional[Session] = None) -> dict:
@@ -29,7 +29,7 @@ def run_today(target_date: date, session: Optional[Session] = None) -> dict:
         from app.database import get_session
         session = next(get_session())
 
-    settings = get_settings()
+    settings = get_effective_settings(session)
 
     # Step 1: sync GitHub activity
     sync_day(target_date, session)

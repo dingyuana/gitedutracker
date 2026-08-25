@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 from app.models import Assessment, ScoringConfig
 from app.services.ai_scoring_service import LLMInvalidResponse, score_student
 from app.services.scoring_engine import compute_final
+from app.services.settings_service import get_effective_settings
 
 
 def _attempt_score(
@@ -97,8 +98,7 @@ def retry_failed_assessments(session: Optional[Session] = None) -> int:
         from app.database import get_session
         session = next(get_session())
 
-    from app.config import get_settings
-    settings = get_settings()
+    settings = get_effective_settings(session)
 
     now = datetime.now(timezone.utc)
 

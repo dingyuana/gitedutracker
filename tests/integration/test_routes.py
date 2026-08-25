@@ -117,7 +117,7 @@ def app(db_session, mock_settings, mock_ai_response):
     db_module.engine = db_session.bind
 
     with patch("app.config._settings", mock_settings), \
-         patch("app.services.pipeline.get_settings", return_value=mock_settings), \
+         patch("app.services.pipeline.get_effective_settings", return_value=mock_settings), \
          patch("app.services.pipeline.score_student", return_value=mock_ai_response), \
          patch("app.services.pipeline.sync_day", return_value=2), \
          patch("app.services.pipeline.send_daily_comments", return_value=None):
@@ -196,12 +196,13 @@ class TestGetStudents:
 
 class TestGetProjects:
 
-    def test_returns_200(self, app):
-        resp = app.get("/projects")
-        assert resp.status_code == 200
+    def test_redirects_to_home(self, app):
+        resp = app.get("/projects", follow_redirects=False)
+        assert resp.status_code in (301, 302, 303, 307)
+        assert "/" in resp.headers["location"]
 
-    def test_shows_project_list(self, app, seed_data):
-        resp = app.get("/projects")
+    def test_home_shows_project_card(self, app, seed_data):
+        resp = app.get("/")
         assert resp.status_code == 200
         assert "项目A" in resp.text
 
@@ -337,6 +338,44 @@ class TestPostStudentsImport:
 
 class TestPostConfig:
 
+    def test_config_page_shows_llm_section(self, app):
+        resp = app.get("/config")
+        assert resp.status_code == 200
+        assert "LLM 设置" in resp.text
+        assert 'name="llm_model"' in resp.text
+        assert 'action="/config/llm"' in resp.text
+
+    def test_post_llm_config_saves(self, app, db_session):
+        from app.models import LlmConfig
+        resp = app.post("/config/llm", data={
+            "llm_model": "doubao-seed-1-6",
+            "llm_base_url": "https://ark.example.com/api/v3",
+            "llm_api_key": "ak-123",
+            "llm_context_max_chars": "9000",
+        })
+        assert resp.status_code in (200, 302, 303)
+        db_session.expire_all()
+        row = db_session.get(LlmConfig, 1)
+        assert row is not None
+        assert row.llm_model == "doubao-seed-1-6"
+        assert row.llm_api_key == "ak-123"
+        assert row.llm_context_max_chars == 9000
+
+    def test_post_blank_api_key_keeps_old(self, app, db_session):
+        from app.models import LlmConfig
+        app.post("/config/llm", data={
+            "llm_model": "m1", "llm_base_url": "https://x/v1",
+            "llm_api_key": "real-key", "llm_context_max_chars": "",
+        })
+        app.post("/config/llm", data={
+            "llm_model": "m2", "llm_base_url": "", "llm_api_key": "",
+            "llm_context_max_chars": "",
+        })
+        db_session.expire_all()
+        row = db_session.get(LlmConfig, 1)
+        assert row.llm_model == "m2"
+        assert row.llm_api_key == "real-key"
+
     def test_updates_scoring_config(self, app, db_session, seed_data):
         resp = app.post("/config", data={
             "w_volume": "0.4",
@@ -417,10 +456,10 @@ class TestPostCreatePlan:
 
 class TestPageHasCreateForms:
 
-    def test_projects_page_has_create_form(self, app):
-        resp = app.get("/projects")
+    def test_home_page_has_create_project_form(self, app):
+        resp = app.get("/")
         assert resp.status_code == 200
-        assert "新增项目" in resp.text
+        assert "新建项目" in resp.text
         assert 'action="/projects" method="POST"' in resp.text
 
     def test_plans_page_has_create_form(self, app, seed_data):
@@ -430,13 +469,79 @@ class TestPageHasCreateForms:
         assert 'action="/plans" method="POST"' in resp.text
 
 
+class TestProjectDetail:
+
+    def test_detail_returns_200_with_name(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        assert resp.status_code == 200
+        assert "项目A" in resp.text
+
+    def test_detail_shows_project_plans(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        assert "完成登录模块" in resp.text
+
+    def test_detail_shows_assessment_scores_and_comments(self, app, db_session, seed_data):
+        a = Assessment(
+            student_id=seed_data['s1'].id,
+            project_id=seed_data['p1'].id,
+            date=seed_data['target'],
+            total_score=88.5,
+            comment="今日完成了登录模块，代码质量良好",
+            status="done",
+        )
+        db_session.add(a)
+        db_session.commit()
+        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        assert resp.status_code == 200
+        assert "张三" in resp.text
+        assert "88.5" in resp.text
+        assert "今日完成了登录模块" in resp.text
+
+    def test_detail_nonexistent_returns_404(self, app):
+        assert app.get("/projects/9999").status_code == 404
+
+    def test_detail_has_add_plan_form_bound_to_project(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        assert 'action="/plans" method="POST"' in resp.text
+        assert f'value="{seed_data["p1"].id}"' in resp.text
+
+
+class TestProjectComplete:
+
+    def test_complete_marks_done(self, app, db_session, seed_data):
+        pid = seed_data['p1'].id
+        resp = app.post(f"/projects/{pid}/complete")
+        assert resp.status_code in (200, 302, 303)
+        db_session.expire_all()
+        assert db_session.get(Project, pid).status == "done"
+
+    def test_completed_project_in_done_section_on_home(self, app, db_session, seed_data):
+        pid = seed_data['p1'].id
+        app.post(f"/projects/{pid}/complete")
+        resp = app.get("/")
+        assert "已完成" in resp.text
+        assert "项目A" in resp.text
+
+    def test_reopen_restores_active(self, app, db_session, seed_data):
+        pid = seed_data['p1'].id
+        app.post(f"/projects/{pid}/complete")
+        resp = app.post(f"/projects/{pid}/reopen")
+        assert resp.status_code in (200, 302, 303)
+        db_session.expire_all()
+        assert db_session.get(Project, pid).status == "active"
+
+    def test_complete_nonexistent_returns_404(self, app):
+        assert app.post("/projects/9999/complete").status_code == 404
+
+
 class TestProjectManagement:
 
-    def test_list_has_edit_delete_buttons(self, app, seed_data):
-        resp = app.get("/projects")
+    def test_home_has_edit_delete_complete_buttons(self, app, seed_data):
+        resp = app.get("/")
         assert resp.status_code == 200
         assert "编辑" in resp.text
         assert "删除" in resp.text
+        assert "完成" in resp.text
 
     def test_edit_page_returns_200(self, app, seed_data):
         resp = app.get(f"/projects/{seed_data['p1'].id}/edit")

@@ -8,12 +8,17 @@ engine = create_engine(settings.database_url, echo=False)
 def _migrate_sqlite():
     from sqlalchemy import inspect, text
     inspector = inspect(engine)
-    if 'student' not in inspector.get_table_names():
-        return
-    cols = {c['name'] for c in inspector.get_columns('student')}
-    if 'project_id' not in cols:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE student ADD COLUMN project_id INTEGER"))
+    tables = inspector.get_table_names()
+    if 'student' in tables:
+        cols = {c['name'] for c in inspector.get_columns('student')}
+        if 'project_id' not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE student ADD COLUMN project_id INTEGER"))
+    if 'project' in tables:
+        cols = {c['name'] for c in inspector.get_columns('project')}
+        if 'status' not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE project ADD COLUMN status VARCHAR DEFAULT 'active'"))
 
 
 def init_db():

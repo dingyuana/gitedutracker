@@ -3,17 +3,27 @@
 {% block content %}
 <h1>项目看板 <small style="font-size:0.9rem;color:#888">{{ today }}</small></h1>
 
-{% if cards %}
+<div class="card">
+    <h3>新建项目</h3>
+    <form action="/projects" method="POST" class="inline-form">
+        <input type="text" name="name" placeholder="项目名称" required>
+        <input type="text" name="description" placeholder="描述（可选）">
+        <label>开始 <input type="date" name="start_date"></label>
+        <label>结束 <input type="date" name="end_date"></label>
+        <button type="submit" class="btn btn-primary">创建</button>
+    </form>
+</div>
+
+<h2>进行中</h2>
+{% if active_cards %}
 <div class="project-grid">
-    {% for c in cards %}
+    {% for c in active_cards %}
     <div class="card project-card">
-        <h3>{{ c.project.name }}</h3>
-        {% if "第" in c.day_label and "/ 共" in c.day_label %}
-            {% set dn = c.day_label.split("天")[0].replace("第","") %}
-            {% set td = c.day_label.split("共")[1].replace("天","") %}
-            <div class="progress-wrap">
-                <div class="progress-bar" style="width: {{ (dn|float / td|float * 100) | round(0, 'floor') }}%"></div>
-            </div>
+        <h3><a href="/projects/{{ c.project.id }}" class="project-link">{{ c.project.name }}</a></h3>
+        {% if c.progress_pct is not none %}
+        <div class="progress-wrap">
+            <div class="progress-bar" style="width: {{ c.progress_pct }}%"></div>
+        </div>
         {% endif %}
         <div class="status-line">📅 {{ c.day_label }}</div>
         <div class="status-line">
@@ -32,11 +42,44 @@
                 <span style="color:#888">未评测</span>
             {% endif %}
         </div>
+        <div class="card-actions">
+            <a href="/projects/{{ c.project.id }}/edit" class="btn btn-small">编辑</a>
+            <form action="/projects/{{ c.project.id }}/complete" method="POST" style="display:inline" onsubmit="return confirm('标记「{{ c.project.name }}」为已完成？')">
+                <button type="submit" class="btn btn-small btn-success">完成</button>
+            </form>
+            <form action="/projects/{{ c.project.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('确定删除项目「{{ c.project.name }}」？关联的计划和评估将一并删除')">
+                <button type="submit" class="btn btn-small btn-danger">删除</button>
+            </form>
+        </div>
     </div>
     {% endfor %}
 </div>
 {% else %}
-<p class="empty">暂无项目，请先到「项目」页创建或导入</p>
+<p class="empty">暂无进行中的项目，请先创建</p>
+{% endif %}
+
+{% if done_cards %}
+<h2>已完成</h2>
+<div class="card">
+    <table>
+        <tbody>
+        {% for c in done_cards %}
+            <tr>
+                <td><a href="/projects/{{ c.project.id }}">{{ c.project.name }}</a></td>
+                <td>{{ c.day_label }}</td>
+                <td>
+                    <form action="/projects/{{ c.project.id }}/reopen" method="POST" style="display:inline">
+                        <button type="submit" class="btn btn-small">重开</button>
+                    </form>
+                    <form action="/projects/{{ c.project.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('确定删除？')">
+                        <button type="submit" class="btn btn-small btn-danger">删除</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% endif %}
 
 <div class="card">

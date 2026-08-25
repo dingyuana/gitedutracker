@@ -130,6 +130,29 @@
 - And 显示今日计划条数与今日评测完成数
 - And 首页不渲染任何学生明细信息
 
+### Scenario 21: 首页项目管理（替代独立项目页）
+- Given 教师在首页看板
+- When 使用「新建项目」表单提交名称与可选描述/起止日期
+- Then 项目创建为 active 状态并出现在「进行中」分区
+- And 每张卡片提供 编辑 / 完成 / 删除 操作
+- And 「完成」将 status 置为 done 并移入「已完成」分区，「重开」恢复 active
+- And `GET /projects` 重定向回首页 `/`
+
+### Scenario 22: 项目日程详情页（分数与评语查询）
+- Given 用户在首页点击项目卡标题链接
+- When 访问 `GET /projects/{id}`
+- Then 显示项目信息、天数状态、本项目学生名单
+- And 可在本页新增日程（默认绑定本项目）、编辑/删除既有日程
+- And 按「日期倒序 → 学生」展示历史评测的总分与 AI 评语
+- And 项目不存在时返回 404
+
+### Scenario 23: LLM 参数前端配置
+- Given 教师访问 `/config` 页面
+- When 在「LLM 设置」中提交模型名 / Base URL / API Key / 上下文长度
+- Then 配置写入 `LlmConfig` 表（单行 upsert），API Key 留空表示保持不变
+- And `run_today` 与后台重试使用 DB 配置覆盖 `.env` 生效
+- And 未配置任何 DB 值时完全回落到 `.env`
+
 ---
 
 ## 二、接口契约
@@ -455,3 +478,8 @@ def seed_config(session: Session = None) -> None
 | 55 | 学生页显示所属项目列 + 导入表单项目下拉 | Iter 8 | `tests/integration/test_routes.py` | `TestGetStudents::test_students_page_shows_project_column`, `test_students_page_import_form_has_project_select` |
 | 56 | 导入 API 支持归属性 project_id 表单字段 | Iter 8 | `tests/integration/test_routes.py` | `TestPostStudentsImport::test_import_with_project_assignment` |
 | 57 | 全部测试通过（pytest，含项目分组与看板） | Iter 8 | 全量 | 198 个测试用例 |
+| 58 | 首页项目管理：创建/编辑/完成/重开/删除 | Iter 8 | `tests/integration/test_routes.py` | `TestProjectComplete`, `TestProjectManagement::test_home_has_edit_delete_complete_buttons` |
+| 59 | GET /projects 重定向首页；新建表单在首页 | Iter 8 | `tests/integration/test_routes.py` | `TestGetProjects::test_redirects_to_home`, `TestPageHasCreateForms::test_home_page_has_create_project_form` |
+| 60 | 项目日程详情页（学生+日程+分数评语按日查询） | Iter 8 | `tests/integration/test_routes.py` | `TestProjectDetail` |
+| 61 | LLM 参数前端配置（DB 覆盖 env，Key 留空保持） | Iter 8 | `tests/unit/test_llm_config.py`, `tests/integration/test_routes.py` | `TestLlmConfigEffectiveSettings`, `TestPostConfig::test_post_llm_config_saves` 等 |
+| 62 | 全部测试通过（pytest，含看板合并与 LLM 配置） | Iter 8 | 全量 | 214 个测试用例 |
