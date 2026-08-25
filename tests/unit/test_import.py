@@ -87,7 +87,7 @@ class TestStudentImport:
         _write_xlsx(xlsx, ['姓名', '邮箱'], [
             ['张三', 'zhangsan@example.com'],
         ])
-        with pytest.raises(ValueError, match='学生姓名'):
+        with pytest.raises(ValueError, match='github仓库'):
             import_students(xlsx, session=session)
 
     def test_import_students_mixed_chinese_english_columns(self, session, tmp_path):

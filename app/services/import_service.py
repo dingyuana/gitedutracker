@@ -5,9 +5,10 @@ from app.models import Student, Project, DailyPlan
 
 
 STUDENT_COLUMN_ALIASES = {
-    '学生姓名': 'name', 'student_name': 'name',
+    '学生姓名': 'name', 'student_name': 'name', '姓名': 'name',
     'github仓库': 'github_repo', 'github_repo': 'github_repo', '仓库地址': 'github_repo',
-    '邮箱': 'email', 'email': 'email',
+    'github仓库地址': 'github_repo',
+    '邮箱': 'email', 'email': 'email', '个人邮箱地址': 'email',
     '学号': 'student_no', 'student_no': 'student_no',
 }
 
