@@ -1,5 +1,6 @@
 import datetime
 import tempfile
+from datetime import date as _date
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
 from sqlmodel import Session, select
@@ -16,27 +17,57 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request, auth_check=Depends(require_auth), session: Session = Depends(get_session)):
-    students = session.exec(select(Student)).all()
+    today = _date.today()
     projects = session.exec(select(Project)).all()
-    latest_assessment = session.exec(
-        select(Assessment)
-        .order_by(Assessment.date.desc())
-        .limit(1)
-    ).first()
+
+    cards = []
+    for p in projects:
+        if p.start_date and today < p.start_date:
+            day_label = "未开始"
+        elif p.start_date and p.end_date and today > p.end_date:
+            day_label = "已结束"
+        elif p.start_date:
+            day_n = (today - p.start_date).days + 1
+            day_label = f"第{day_n}天"
+            if p.end_date:
+                total_days = (p.end_date - p.start_date).days + 1
+                day_label += f" / 共{total_days}天"
+        else:
+            day_label = "未排期"
+
+        plans_today = session.exec(
+            select(DailyPlan).where(DailyPlan.project_id == p.id, DailyPlan.date == today)
+        ).all()
+        assessed_today = session.exec(
+            select(Assessment).where(Assessment.project_id == p.id, Assessment.date == today)
+        ).all()
+        done_today = [a for a in assessed_today if a.status == "done"]
+
+        cards.append({
+            "project": p,
+            "day_label": day_label,
+            "plan_count": len(plans_today),
+            "plan_summary": plans_today[0].content if plans_today else None,
+            "assessed_count": len(done_today),
+        })
+
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "index.html", {
-        "students": students,
-        "projects": projects,
-        "latest_assessment": latest_assessment,
+        "cards": cards,
+        "today": today,
     })
 
 
 @router.get("/students", response_class=HTMLResponse)
 def students_page(request: Request, auth_check=Depends(require_auth), session: Session = Depends(get_session)):
     student_list = session.exec(select(Student)).all()
+    projects = session.exec(select(Project)).all()
+    project_map = {p.id: p.name for p in projects}
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "students.html", {
         "students": student_list,
+        "projects": projects,
+        "project_map": project_map,
     })
 
 
@@ -45,6 +76,7 @@ def import_students_page(
     request: Request,
     auth_check=Depends(require_auth),
     file: UploadFile = File(...),
+    project_id: int = Form(None),
     session: Session = Depends(get_session),
 ):
     if not file.filename:
@@ -53,7 +85,7 @@ def import_students_page(
         tmp.write(file.file.read())
         tmp_path = tmp.name
     try:
-        import_students(tmp_path, session=session)
+        import_students(tmp_path, session=session, project_id=project_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:

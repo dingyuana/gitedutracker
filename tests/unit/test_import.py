@@ -103,6 +103,42 @@ class TestStudentImport:
         assert s.github_repo == 'zhangsan/repo'
 
 
+    def test_import_students_with_project_assignment(self, session, tmp_path):
+        from app.services.import_service import import_students
+        from app.models import Project
+        p = Project(name='分组项目')
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+        xlsx = str(tmp_path / "students_proj.xlsx")
+        _write_xlsx(xlsx, ['姓名', '个人邮箱地址', 'github仓库地址'], [
+            ['王五', 'ww@example.com', 'ww/myrepo'],
+        ])
+        count = import_students(xlsx, session=session, project_id=p.id)
+        assert count == 1
+        s = session.exec(select(Student)).first()
+        assert s.project_id == p.id
+
+    def test_reimport_reassigns_project_for_same_email(self, session, tmp_path):
+        from app.services.import_service import import_students
+        from app.models import Project
+        p1 = Project(name='项目一')
+        p2 = Project(name='项目二')
+        session.add_all([p1, p2])
+        session.commit()
+        session.refresh(p1)
+        session.refresh(p2)
+        xlsx = str(tmp_path / "students_move.xlsx")
+        _write_xlsx(xlsx, ['姓名', '邮箱', 'github仓库'], [
+            ['赵六', 'zl@example.com', 'zl/myrepo'],
+        ])
+        import_students(xlsx, session=session, project_id=p1.id)
+        import_students(xlsx, session=session, project_id=p2.id)
+        students = session.exec(select(Student)).all()
+        assert len(students) == 1
+        assert students[0].project_id == p2.id
+
+
 class TestProjectImport:
 
     def test_import_projects_basic(self, session, tmp_path):

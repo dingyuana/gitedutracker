@@ -40,6 +40,12 @@ def seed_data(session):
     session.commit()
     session.refresh(p1)
 
+    s1.project_id = p1.id
+    s2.project_id = p1.id
+    session.add(s1)
+    session.add(s2)
+    session.commit()
+
     plan_all = DailyPlan(
         project_id=p1.id,
         date=date(2026, 8, 21),
@@ -377,3 +383,46 @@ class TestReturnStructure:
         assert isinstance(result["success"], int)
         assert isinstance(result["failed"], int)
         assert isinstance(result["details"], list)
+
+
+class TestProjectScoping:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_students_only_scored_within_own_project(self, mock_sync_day, mock_score_student,
+                                                     mock_send_daily, session, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        target = date(2026, 8, 21)
+        p1 = Project(name='项目一')
+        p2 = Project(name='项目二')
+        session.add_all([p1, p2])
+        session.commit()
+        session.refresh(p1)
+        session.refresh(p2)
+
+        sa = Student(name='甲', email='a@x.com', github_repo='a/repo', project_id=p1.id)
+        sb = Student(name='乙', email='b@x.com', github_repo='b/repo', project_id=p2.id)
+        sc = Student(name='丙', email='c@x.com', github_repo='c/repo')
+        session.add_all([sa, sb, sc])
+        session.commit()
+        for s in [sa, sb, sc]:
+            session.refresh(s)
+
+        session.add(DailyPlan(project_id=p1.id, date=target, content='任务一', student_id=None))
+        session.add(DailyPlan(project_id=p2.id, date=target, content='任务二', student_id=None))
+        session.add(ScoringConfig())
+        for s in [sa, sb, sc]:
+            session.add(GithubActivity(student_id=s.id, date=target, commits_count=1, status="ok"))
+        session.commit()
+
+        mock_sync_day.return_value = 3
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(target, session=session)
+
+        assessments = session.exec(select(Assessment).where(Assessment.date == target)).all()
+        pairs = {(a.student_id, a.project_id) for a in assessments}
+        assert pairs == {(sa.id, p1.id), (sb.id, p2.id)}
+        assert result["success"] == 2

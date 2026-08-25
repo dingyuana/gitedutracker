@@ -2,7 +2,7 @@ import sys
 import os
 import json
 import pytest
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -38,6 +38,12 @@ def seed_data(db_session):
     db_session.add(p1)
     db_session.commit()
     db_session.refresh(p1)
+
+    s1.project_id = p1.id
+    s2.project_id = p1.id
+    db_session.add(s1)
+    db_session.add(s2)
+    db_session.commit()
 
     plan_all = DailyPlan(
         project_id=p1.id,
@@ -135,15 +141,30 @@ class TestGetIndex:
         assert resp.status_code == 200
         assert "今日评测" in resp.text
 
-    def test_page_shows_student_count(self, app, seed_data):
+    def test_page_hides_student_details(self, app, seed_data):
         resp = app.get("/")
         assert resp.status_code == 200
-        assert "张三" in resp.text
+        assert "张三" not in resp.text
+        assert "李四" not in resp.text
 
-    def test_page_shows_project_count(self, app, seed_data):
+    def test_page_shows_project_status_card(self, app, seed_data):
         resp = app.get("/")
         assert resp.status_code == 200
         assert "项目A" in resp.text
+        # 无起止日期 → 未排期；有日期 → 第N天/未开始/已结束
+        assert ("未排期" in resp.text) or ("第" in resp.text)
+
+    def test_page_shows_project_day_progress(self, app, db_session, seed_data):
+        p = db_session.get(Project, seed_data['p1'].id)
+        today = date.today()
+        p.start_date = today - timedelta(days=4)
+        p.end_date = today + timedelta(days=95)
+        db_session.add(p)
+        db_session.commit()
+        resp = app.get("/")
+        assert resp.status_code == 200
+        assert "第5天" in resp.text
+        assert "共100天" in resp.text
 
 
 class TestGetStudents:
@@ -157,6 +178,15 @@ class TestGetStudents:
         assert resp.status_code == 200
         assert "张三" in resp.text
         assert "李四" in resp.text
+
+    def test_students_page_shows_project_column(self, app, seed_data):
+        resp = app.get("/students")
+        assert resp.status_code == 200
+        assert "所属项目" in resp.text
+
+    def test_students_page_import_form_has_project_select(self, app, seed_data):
+        resp = app.get("/students")
+        assert 'name="project_id"' in resp.text
 
     def test_contains_import_form(self, app):
         resp = app.get("/students")
@@ -291,6 +321,18 @@ class TestPostStudentsImport:
     def test_import_without_file_returns_422(self, app):
         resp = app.post("/students")
         assert resp.status_code == 422
+
+    def test_import_with_project_assignment(self, app, db_session, tmp_path, seed_data):
+        xlsx = self._make_xlsx(tmp_path)
+        pid = seed_data['p1'].id
+        with open(xlsx, "rb") as f:
+            resp = app.post("/students", data={"project_id": str(pid)}, files={"file": ("students.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+        assert resp.status_code in (200, 302, 303)
+        db_session.expire_all()
+        students = db_session.exec(select(Student)).all()
+        assert len(students) == 2
+        for s in students:
+            assert s.project_id == pid
 
 
 class TestPostConfig:

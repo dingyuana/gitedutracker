@@ -40,6 +40,12 @@ def seed_data(session):
     session.commit()
     session.refresh(p1)
 
+    s1.project_id = p1.id
+    s2.project_id = p1.id
+    session.add(s1)
+    session.add(s2)
+    session.commit()
+
     plan_all = DailyPlan(
         project_id=p1.id,
         date=date(2026, 8, 21),

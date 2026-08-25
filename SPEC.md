@@ -116,6 +116,20 @@
 - Then 计划被删除并重定向回计划列表
 - And 计划不存在时返回 404
 
+### Scenario 19: 项目分组（学生归属项目）
+- Given 教师在 `/students` 导入表单选择了归属项目
+- When 上传学生名单 xlsx 并提交
+- Then 导入的学生（含按邮箱幂等更新的已有学生）`project_id` 被设为所选项目
+- And `run_today` 中通用计划（student_id 为空）只作用于 `Student.project_id == plan.project_id` 的学生
+- And 未归属任何项目的学生被跳过并记录 warning 日志
+
+### Scenario 20: 首页项目状态看板
+- Given 数据库中存在项目（含起止日期或无日期）
+- When 用户访问首页 `/`
+- Then 每个项目显示为一张状态卡：未开始 / 第N天(/共M天) / 已结束 / 未排期
+- And 显示今日计划条数与今日评测完成数
+- And 首页不渲染任何学生明细信息
+
 ---
 
 ## 二、接口契约
@@ -435,3 +449,9 @@ def seed_config(session: Session = None) -> None
 | 49 | 删除计划（POST /plans/{id}/delete） | Iter 8 | `tests/integration/test_routes.py` | `TestPlanManagement::test_delete_*` |
 | 50 | 项目/计划页含新增/编辑/删除控件 | Iter 8 | `tests/integration/test_routes.py` | `TestPageHasCreateForms`, `TestProjectManagement::test_list_*`, `TestPlanManagement::test_list_*` |
 | 51 | 全部测试通过（pytest，含运行期维护补丁） | Iter 8 | 全量 | 191 个测试用例 |
+| 52 | 学生导入归属项目（含幂等重导入改归属） | Iter 8 | `tests/unit/test_import.py` | `test_import_students_with_project_assignment`, `test_reimport_reassigns_project_for_same_email` |
+| 53 | 流水线按项目分组评测（跨项目不串评，未归属跳过） | Iter 8 | `tests/unit/test_pipeline.py` | `TestProjectScoping::test_students_only_scored_within_own_project` |
+| 54 | 首页项目状态看板（无学生明细） | Iter 8 | `tests/integration/test_routes.py` | `TestGetIndex::test_page_hides_student_details`, `test_page_shows_project_status_card`, `test_page_shows_project_day_progress` |
+| 55 | 学生页显示所属项目列 + 导入表单项目下拉 | Iter 8 | `tests/integration/test_routes.py` | `TestGetStudents::test_students_page_shows_project_column`, `test_students_page_import_form_has_project_select` |
+| 56 | 导入 API 支持归属性 project_id 表单字段 | Iter 8 | `tests/integration/test_routes.py` | `TestPostStudentsImport::test_import_with_project_assignment` |
+| 57 | 全部测试通过（pytest，含项目分组与看板） | Iter 8 | 全量 | 198 个测试用例 |

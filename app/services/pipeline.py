@@ -46,15 +46,20 @@ def run_today(target_date: date, session: Optional[Session] = None) -> dict:
     # Build list of (student, plan) pairs
     pairs: list[tuple[Student, DailyPlan]] = []
     for plan in all_plans:
-        if plan.student_id is None:
-            # Applies to all students
-            for s in students:
-                pairs.append((s, plan))
-        else:
-            # Applies to specific student
+        if plan.student_id is not None:
             s = student_map.get(plan.student_id)
             if s is not None:
                 pairs.append((s, plan))
+            continue
+        for s in students:
+            if s.project_id == plan.project_id:
+                pairs.append((s, plan))
+    unassigned = [s.name for s in students if s.project_id is None]
+    if unassigned and all_plans:
+        import logging
+        logging.getLogger(__name__).warning(
+            "以下学生未归属任何项目，已跳过评测: %s", ", ".join(unassigned)
+        )
 
     success_count = 0
     failed_count = 0

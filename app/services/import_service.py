@@ -60,10 +60,14 @@ def _parse_date(val):
         return None
 
 
-def import_students(filepath: str, session: Session = None) -> int:
+def import_students(filepath: str, session: Session = None, project_id: int = None) -> int:
     df = pd.read_excel(filepath, engine='openpyxl')
     df = _normalize_columns(df, STUDENT_COLUMN_ALIASES)
     _ensure_columns(df, ['name', 'email', 'github_repo'], '学生表', col_names={'name': '学生姓名'})
+    if project_id is not None:
+        from app.models import Project
+        if session.get(Project, project_id) is None:
+            raise ValueError(f"项目 id={project_id} 不存在，无法归属学生")
 
     count = 0
     skip_log = []
@@ -88,14 +92,14 @@ def import_students(filepath: str, session: Session = None) -> int:
         }
         if 'student_no' in df.columns and not pd.isna(row.get('student_no')):
             student_data['student_no'] = str(row['student_no']).strip()
+        if project_id is not None:
+            student_data['project_id'] = project_id
         existing = session.exec(
             select(Student).where(Student.email == student_data['email'])
         ).first()
         if existing is not None:
-            existing.name = student_data['name']
-            existing.github_repo = student_data['github_repo']
-            if 'student_no' in student_data:
-                existing.student_no = student_data['student_no']
+            for k, v in student_data.items():
+                setattr(existing, k, v)
             session.add(existing)
         else:
             s = Student.model_validate(student_data)

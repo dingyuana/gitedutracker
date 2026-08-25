@@ -1,47 +1,44 @@
 {% extends "base.html" %}
-{% block title %}看板 — 学生 GitHub 日报追踪器{% endblock %}
+{% block title %}项目看板 — 学生 GitHub 日报追踪器{% endblock %}
 {% block content %}
-<h1>看板</h1>
-<div class="stats">
-    <div class="stat-card">
-        <div class="label">学生数</div>
-        <div class="value">{{ students|length }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="label">项目数</div>
-        <div class="value">{{ projects|length }}</div>
-    </div>
-    <div class="stat-card">
-        <div class="label">最近评测</div>
-        <div class="value">
-            {% if latest_assessment %}
-                {{ latest_assessment.date }}
+<h1>项目看板 <small style="font-size:0.9rem;color:#888">{{ today }}</small></h1>
+
+{% if cards %}
+<div class="project-grid">
+    {% for c in cards %}
+    <div class="card project-card">
+        <h3>{{ c.project.name }}</h3>
+        {% if "第" in c.day_label and "/ 共" in c.day_label %}
+            {% set dn = c.day_label.split("天")[0].replace("第","") %}
+            {% set td = c.day_label.split("共")[1].replace("天","") %}
+            <div class="progress-wrap">
+                <div class="progress-bar" style="width: {{ (dn|float / td|float * 100) | round(0, 'floor') }}%"></div>
+            </div>
+        {% endif %}
+        <div class="status-line">📅 {{ c.day_label }}</div>
+        <div class="status-line">
+            📋 今日计划：
+            {% if c.plan_count > 0 %}
+                {{ c.plan_count }} 条{% if c.plan_summary %}（{{ c.plan_summary[:20] }}{% if c.plan_summary|length > 20 %}…{% endif %}）{% endif %}
             {% else %}
-                无
+                <span style="color:#d93025">无</span>
+            {% endif %}
+        </div>
+        <div class="status-line">
+            ✅ 今日评测：
+            {% if c.assessed_count > 0 %}
+                已完成 {{ c.assessed_count }} 条
+            {% else %}
+                <span style="color:#888">未评测</span>
             {% endif %}
         </div>
     </div>
+    {% endfor %}
 </div>
-{% if students %}
-<div class="card">
-    <h3>学生列表</h3>
-    <ul>
-        {% for s in students %}
-        <li>{{ s.name }}</li>
-        {% endfor %}
-    </ul>
-</div>
+{% else %}
+<p class="empty">暂无项目，请先到「项目」页创建或导入</p>
 {% endif %}
-{% if projects %}
-<div class="card">
-    <h3>项目列表</h3>
-    <ul>
-        {% for p in projects %}
-        <li>{{ p.name }}</li>
-        {% endfor %}
-    </ul>
-</div>
-{% endif %}
+
 <div class="card">
     <form action="/run-today" method="POST" onsubmit="return confirm('确定要运行今日评测吗？')">
         <button type="submit" class="btn btn-success">今日评测</button>

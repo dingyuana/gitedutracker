@@ -9,6 +9,15 @@
             <label>选择 Excel 文件</label>
             <input type="file" name="file" accept=".xlsx,.xls">
         </div>
+        <div class="form-group">
+            <label>归属项目（导入的学生将加入该项目）</label>
+            <select name="project_id">
+                <option value="">不分组</option>
+                {% for p in projects %}
+                <option value="{{ p.id }}">{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
         <button type="submit" class="btn btn-primary">导入</button>
     </form>
 </div>
@@ -17,7 +26,7 @@
     {% if students %}
     <table>
         <thead>
-            <tr><th>姓名</th><th>邮箱</th><th>GitHub 仓库</th></tr>
+            <tr><th>姓名</th><th>邮箱</th><th>GitHub 仓库</th><th>所属项目</th></tr>
         </thead>
         <tbody>
             {% for s in students %}
@@ -25,6 +34,7 @@
                 <td>{{ s.name }}</td>
                 <td>{{ s.email }}</td>
                 <td>{{ s.github_repo }}</td>
+                <td>{{ project_map.get(s.project_id, "—") }}</td>
             </tr>
             {% endfor %}
         </tbody>

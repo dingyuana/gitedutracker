@@ -29,6 +29,7 @@ class StudentBase(SQLModel):
 class Student(StudentBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     github_url: Optional[str] = None
+    project_id: Optional[int] = Field(default=None, foreign_key='project.id')
 
     @model_validator(mode='before')
     def set_github_url(cls, data):
