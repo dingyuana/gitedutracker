@@ -120,7 +120,12 @@ def app(db_session, mock_settings, mock_ai_response):
          patch("app.services.pipeline.get_effective_settings", return_value=mock_settings), \
          patch("app.services.pipeline.score_student", return_value=mock_ai_response), \
          patch("app.services.pipeline.sync_day", return_value=2), \
-         patch("app.services.pipeline.send_daily_comments", return_value=None):
+         patch("app.services.pipeline.send_daily_comments", return_value=None), \
+         patch("app.services.pipeline.extract_day_activity",
+               return_value={"commits_count": 1, "loc_additions": 5, "loc_deletions": 1,
+                             "code_diffs": []}), \
+         patch("app.services.pipeline.extract_snapshot",
+               return_value={"files": [{"path": "main.py", "content": "print(1)", "truncated": False}]}):
         from fastapi.templating import Jinja2Templates
         from app.main import app as fastapi_app
         fastapi_app.state.db_session = db_session
@@ -325,6 +330,19 @@ class TestPostRunToday:
             app.post("/run-today", data={"date": "2026-08-21", "only_missing": "1"})
             _, kwargs = mock_run.call_args
             assert kwargs.get("only_missing") is True
+
+    def test_eval_mode_passed_to_pipeline(self, app):
+        with patch("app.api.routes.run_today") as mock_run:
+            mock_run.return_value = {"success": 0, "failed": 0, "details": []}
+            app.post("/run-today", data={"date": "2026-08-21", "eval_mode": "full"})
+            _, kwargs = mock_run.call_args
+            assert kwargs.get("eval_mode") == "full"
+
+    def test_index_panel_has_eval_mode_select(self, app):
+        resp = app.get("/")
+        assert 'name="eval_mode"' in resp.text
+        assert "当日变更评审" in resp.text
+        assert "全项目代码审核" in resp.text
 
 
 class TestPostStudentsImport:

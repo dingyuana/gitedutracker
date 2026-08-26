@@ -25,8 +25,15 @@ REQUIRED_FIELDS = (
 )
 
 SYSTEM_PROMPT = (
-    "你是一个代码评估助手。根据学生当天的 GitHub 活动和布置的任务，"
+    "你是一个严格的代码评审导师。根据学生当天布置的任务、GitHub 活动以及提供的真实代码，"
     "评估质量、匹配度、完成情况，并生成四段式鼓励评语。\n"
+    "评分依据优先级：\n"
+    "1. 若提供「当日代码变更(code_diffs)」，必须逐段阅读真实 diff 评估代码质量："
+    "结构设计、命名可读性、边界处理、是否含测试，严禁仅凭提交信息推断。\n"
+    "2. 若提供「项目代码快照(project_files)」，从整体架构、模块划分、代码一致性角度审核全项目质量，"
+    "并结合当日 commits 判断进度贡献。\n"
+    "3. 都未提供时才退化为依据提交信息与行数估算，并在 reasoning 中说明局限。\n"
+    "进度(schedule_status/completion)依据当日计划与实际产出对照判断。\n"
     "严格返回 JSON，格式：\n"
     '{"quality_score": 0-100, "match_score": 0-100, "completion": true/false, '
     '"schedule_status": "ahead|ontime|behind", '
@@ -78,6 +85,22 @@ def _build_user_message(context: dict[str, Any], truncated: bool = False) -> str
             lines.append(f"  - [{sha}] {msg} (+{add}/-{sub})")
     lines.append(f"- PRs opened: {prs_opened}, merged: {prs_merged}")
     lines.append(f"- 代码增删：+{loc_additions}/-{loc_deletions}")
+
+    code_diffs = context.get("code_diffs") or []
+    if code_diffs:
+        lines.append("")
+        lines.append("当日代码变更（真实 diff，据此评估质量）：")
+        for d in code_diffs[:5]:
+            lines.append(f"--- {d.get('message', '')} ---")
+            lines.append(str(d.get("patch", ""))[:1200])
+
+    project_files = context.get("project_files") or []
+    if project_files:
+        lines.append("")
+        lines.append("项目当前代码快照（全量审核模式）：")
+        for f in project_files:
+            lines.append(f"=== {f['path']}{'（截断）' if f.get('truncated') else ''} ===")
+            lines.append(str(f.get("content", ""))[:1500])
 
     return "\n".join(lines)
 

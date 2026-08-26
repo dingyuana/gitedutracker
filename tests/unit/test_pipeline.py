@@ -13,6 +13,20 @@ from app.models import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_network_code_extract(request):
+    from unittest.mock import patch as _patch
+    if request.node.get_closest_marker("real_mirror"):
+        yield
+        return
+    with _patch("app.services.pipeline.extract_day_activity",
+                return_value={"commits_count": 0, "loc_additions": 0,
+                              "loc_deletions": 0, "code_diffs": []}), \
+         _patch("app.services.pipeline.extract_snapshot",
+                return_value={"files": []}):
+        yield
+
+
 @pytest.fixture
 def engine():
     return create_engine("sqlite:///:memory:")
@@ -484,3 +498,64 @@ class TestOnlyMissingScope:
         run_today(target, session=session, only_missing=True)
 
         assert mock_score_student.call_count == 3
+
+
+class TestEvalModes:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    @patch("app.services.pipeline.extract_day_activity")
+    def test_diff_mode_passes_code_diffs(self, mock_extract, mock_sync_day, mock_score_student,
+                                         mock_send_daily, session, seed_data,
+                                         mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        mock_extract.return_value = {
+            "commits_count": 1, "loc_additions": 10, "loc_deletions": 2,
+            "code_diffs": [{"sha": "abc", "message": "m", "patch": "+print(1)"}],
+        }
+        mock_sync_day.return_value = 1
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        run_today(seed_data['target'], session=session)
+
+        ctx = mock_score_student.call_args[0][0]
+        assert ctx.get("code_diffs")[0]["patch"] == "+print(1)"
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    @patch("app.services.pipeline.extract_snapshot")
+    def test_full_mode_passes_project_files(self, mock_snap, mock_sync_day, mock_score_student,
+                                            mock_send_daily, session, seed_data,
+                                            mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        mock_snap.return_value = {"files": [{"path": "main.py", "content": "print(1)", "truncated": False}]}
+        mock_sync_day.return_value = 1
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        run_today(seed_data['target'], session=session, eval_mode="full")
+
+        ctx = mock_score_student.call_args[0][0]
+        assert ctx.get("project_files")[0]["path"] == "main.py"
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    @patch("app.services.pipeline.extract_day_activity")
+    def test_extract_failure_degrades_gracefully(self, mock_extract, mock_sync_day, mock_score_student,
+                                                 mock_send_daily, session, seed_data,
+                                                 mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        mock_extract.side_effect = RuntimeError("git boom")
+        mock_sync_day.return_value = 1
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(seed_data['target'], session=session)
+
+        ctx = mock_score_student.call_args[0][0]
+        assert ctx.get("code_diffs") == []
+        assert result["success"] >= 1

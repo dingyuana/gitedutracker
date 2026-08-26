@@ -169,6 +169,15 @@
 - And 展示每个学生独立的分数变化折线图及已评天数
 - And 无数据时显示占位提示而非空白
 
+### Scenario 26: 双评审模式（当日 diff / 全项目审核）
+- Given 学生仓库已通过本地镜像（git mirror）缓存到服务器
+- When 教师在评测面板选择评审模式并运行：
+  - 「diff 模式」：pipeline 从镜像提取当日 commits 真实 patch 注入评分上下文
+  - 「full 模式」：从镜像提取全项目源码快照（跳过二进制/构建产物/超限截断）
+- Then LLM 基于真实代码而非提交信息评估质量与进度
+- And 提取失败时优雅降级为空列表，不阻塞评测
+- And git 网络操作强制 HTTP/1.1 规避 GnuTLS 断连；非 UTF-8 文件容错解码、空字节文件跳过
+
 ---
 
 ## 二、接口契约
@@ -503,3 +512,8 @@ def seed_config(session: Session = None) -> None
 | 64 | 分数趋势图（平均分+每学生 SVG 折线） | Iter 8 | `tests/unit/test_svg_chart.py`, `tests/integration/test_routes.py` | `TestBuildLineChart`, `TestProjectDetail::test_detail_shows_score_trend_charts` |
 | 65 | GitHub 同步节流防反滥用限流 | Iter 8 | `tests/unit/test_github_snapshot.py` | `TestSyncPacing::test_sleeps_between_students` |
 | 66 | 全部测试通过（pytest，含评测面板与图表） | Iter 8 | 全量 | 230 个测试用例 |
+| 67 | 本地镜像服务（clone/update/自愈/命名） | Iter 8 | `tests/unit/test_mirror_service.py` | `TestEnsureMirror` |
+| 68 | 当日 diff 提取（numstat+patch 截断） | Iter 8 | `tests/unit/test_mirror_service.py` | `TestExtractDayActivity` |
+| 69 | 全项目快照提取（B 方案：预算/截断/跳过二进制与构建产物） | Iter 8 | `tests/unit/test_mirror_service.py` | `TestExtractSnapshot` |
+| 70 | 双评审模式贯通（pipeline 上下文 + 路由 + 前端选择器） | Iter 8 | `tests/unit/test_pipeline.py`, `tests/integration/test_routes.py` | `TestEvalModes`, `TestPostRunToday::test_eval_mode_passed_to_pipeline` |
+| 71 | 全部测试通过（pytest，含双评审模式与镜像服务） | Iter 8 | 全量 | 254 个测试用例 |

@@ -12,15 +12,22 @@ from app.services.github_snapshot import sync_day
 from app.services.scoring_engine import compute_final
 from app.services.email_service import send_daily_comments
 from app.services.settings_service import get_effective_settings
+from app.services.mirror_service import extract_day_activity, extract_snapshot
 
 
-def run_today(target_date: date, session: Optional[Session] = None, only_missing: bool = False) -> dict:
+def run_today(
+    target_date: date,
+    session: Optional[Session] = None,
+    only_missing: bool = False,
+    eval_mode: str = "diff",
+) -> dict:
     """Run the full auto-scoring pipeline for a given date.
 
     1. Sync GitHub activity for all students.
     2. Find all applicable DailyPlans for the date.
     3. For each (student, project, date) combo: score → compute → persist.
        only_missing=True 时跳过已有 done 评测的组合（failed 仍会重试）。
+       eval_mode="diff" 附带当日真实 diff；"full" 附带全项目代码快照。
     4. LLM failures are caught and stored as failed with retry info.
 
     Returns:
@@ -101,6 +108,21 @@ def run_today(target_date: date, session: Optional[Session] = None, only_missing
             "loc_deletions": activity.loc_deletions,
             "student_id": student.id,
         }
+
+        try:
+            if eval_mode == "full":
+                snap = extract_snapshot(student.github_repo)
+                context["project_files"] = snap.get("files", [])
+            else:
+                local = extract_day_activity(student.github_repo, target_date)
+                context["code_diffs"] = local.get("code_diffs", [])
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "代码提取失败 student_id=%s: %s", student.id, e
+            )
+            context.setdefault("code_diffs", [])
+            context.setdefault("project_files", [])
 
         # Upsert assessment by (student_id, project_id, date)
         assessment = session.exec(

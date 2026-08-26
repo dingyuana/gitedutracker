@@ -556,11 +556,14 @@ async def run_today_endpoint(
     form_data: dict = {}
     if "form" in request.headers.get("content-type", ""):
         form = await request.form()
-        form_data = {k: form.get(k) for k in ("date", "only_missing", "redirect")}
+        form_data = {k: form.get(k) for k in ("date", "only_missing", "redirect", "eval_mode")}
 
     date = qp.get("date") or form_data.get("date")
     only_missing_raw = qp.get("only_missing") if qp.get("only_missing") is not None else form_data.get("only_missing")
     only_missing = str(only_missing_raw).lower() in ("1", "true", "on") if only_missing_raw is not None else False
+    eval_mode = str(form_data.get("eval_mode") or qp.get("eval_mode") or "diff").strip().lower()
+    if eval_mode not in ("diff", "full"):
+        eval_mode = "diff"
 
     if date:
         try:
@@ -571,7 +574,7 @@ async def run_today_endpoint(
     else:
         target_date = _date.today()
 
-    result = run_today(target_date, session=session, only_missing=only_missing)
+    result = run_today(target_date, session=session, only_missing=only_missing, eval_mode=eval_mode)
 
     if str(form_data.get("redirect", "")).lower() in ("1", "true"):
         return RedirectResponse(url=f"/results?date={target_date}", status_code=303)
