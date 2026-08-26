@@ -299,3 +299,49 @@ class TestReuseOkCache:
         act = session.exec(select(GithubActivity)).first()
         assert act.status == "ok"
         assert act.commits_count == 2
+
+
+class TestMirrorFirstSync:
+
+    def test_uses_mirror_before_api(self, session):
+        from unittest.mock import patch
+        from app.services import github_snapshot
+        from app.models import Student, GithubActivity
+        from datetime import date
+
+        s1 = Student(name='甲', email='mf@x.com', github_repo='m/r')
+        session.add(s1)
+        session.commit()
+
+        mirror_data = {"commits_count": 4, "commits": [{"sha": "x", "message": "m",
+                        "additions": 30, "deletions": 5}],
+                       "loc_additions": 30, "loc_deletions": 5}
+
+        with patch.object(github_snapshot, "_fetch_via_mirror", return_value=mirror_data), \
+             patch.object(github_snapshot, "fetch_activity") as mock_api:
+            count = github_snapshot.sync_day(date(2026, 8, 21), session=session)
+
+        mock_api.assert_not_called()
+        assert count == 1
+        act = session.exec(select(GithubActivity)).first()
+        assert act.status == "ok"
+        assert act.commits_count == 4
+
+    def test_falls_back_to_api_when_mirror_fails(self, session):
+        from unittest.mock import patch
+        from app.services import github_snapshot
+        from app.models import Student, GithubActivity
+        from datetime import date
+
+        s1 = Student(name='乙', email='fb@x.com', github_repo='f/r')
+        session.add(s1)
+        session.commit()
+
+        api_data = {"commits_count": 1, "commits": [], "prs_opened": 0,
+                    "prs_merged": 0, "loc_additions": 3, "loc_deletions": 1}
+
+        with patch.object(github_snapshot, "_fetch_via_mirror", return_value=None), \
+             patch.object(github_snapshot, "fetch_activity", return_value=api_data):
+            count = github_snapshot.sync_day(date(2026, 8, 21), session=session)
+
+        assert count == 1

@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 
 from app.models import GithubActivity, Student
 from app.services.github_service import fetch_activity
+from app.services.mirror_service import extract_day_activity as _mirror_extract
 
 SYNC_INTERVAL_SECONDS = 3.0
 RATE_LIMIT_COOLDOWN_SECONDS = 45
@@ -18,13 +19,29 @@ def _is_rate_limit_error(e: Exception) -> bool:
     return "rate limit" in str(e).lower()
 
 
-def sync_day(target_date: date, session: Session = None) -> int:
-    """同步指定日期所有学生的 GitHub 活动，返回成功数"""
+def _fetch_via_mirror(student, target_date: date) -> dict | None:
+    try:
+        local = _mirror_extract(student.github_repo, target_date)
+    except Exception:
+        return None
+    return {
+        "commits_count": local.get("commits_count", 0),
+        "commits": local.get("commits", []),
+        "prs_opened": 0,
+        "prs_merged": 0,
+        "loc_additions": local.get("loc_additions", 0),
+        "loc_deletions": local.get("loc_deletions", 0),
+    }
+
+
+def sync_day(target_date: date, session: Session = None, students: list = None) -> int:
+    """同步指定日期学生的 GitHub 活动；students 为空则同步全部，返回成功数"""
     if session is None:
         from app.database import get_session
         session = next(get_session())
 
-    students = session.exec(select(Student)).all()
+    if students is None:
+        students = session.exec(select(Student)).all()
     success_count = 0
 
     for idx, student in enumerate(students):
@@ -40,19 +57,20 @@ def sync_day(target_date: date, session: Session = None) -> int:
             success_count += 1
             continue
         try:
-            activity_data = None
-            for attempt in (1, 2):
-                try:
-                    activity_data = fetch_activity(
-                        repo=student.github_repo,
-                        date=target_date,
-                    )
-                    break
-                except Exception as e:
-                    if attempt == 1 and _is_rate_limit_error(e):
-                        time.sleep(RATE_LIMIT_COOLDOWN_SECONDS)
-                        continue
-                    raise
+            activity_data = _fetch_via_mirror(student, target_date)
+            if activity_data is None:
+                for attempt in (1, 2):
+                    try:
+                        activity_data = fetch_activity(
+                            repo=student.github_repo,
+                            date=target_date,
+                        )
+                        break
+                    except Exception as e:
+                        if attempt == 1 and _is_rate_limit_error(e):
+                            time.sleep(RATE_LIMIT_COOLDOWN_SECONDS)
+                            continue
+                        raise
             activity = session.exec(
                 select(GithubActivity).where(
                     GithubActivity.student_id == student.id,

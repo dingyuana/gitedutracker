@@ -650,3 +650,58 @@ class TestScoreKeyMapping:
         assert abs(a.quality_score - 90) < 0.01
         # 总分必须体现质量分 90 的贡献，而非只剩进度加减分
         assert a.total_score > 20, f"total={a.total_score} 说明质量分未计入"
+
+
+class TestEmptyDayShortCircuit:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_diff_mode_zero_commits_marks_empty_without_llm(self, mock_sync_day, mock_score_student,
+                                                            mock_send_daily, session, seed_data,
+                                                            mock_settings):
+        from app.services.pipeline import run_today
+        target = seed_data['target']
+        for s_ in seed_data['s1'], seed_data['s2']:
+            s_.project_id = seed_data['p1'].id
+            session.add(s_)
+        for act in session.exec(select(GithubActivity).where(GithubActivity.date == target)).all():
+            act.commits_count = 0
+            act.loc_additions = 0
+            act.loc_deletions = 0
+            session.add(act)
+        session.commit()
+
+        mock_sync_day.return_value = 2
+        mock_send_daily.return_value = None
+
+        result = run_today(target, session=session, eval_mode="diff")
+
+        mock_score_student.assert_not_called()
+        assert result["success"] == 3
+        for a in session.exec(select(Assessment).where(Assessment.date == target)).all():
+            assert a.status == "done"
+            assert a.total_score == 0
+            assert "工作为空" in (a.comment or "")
+
+
+class TestLLMTimeoutResilience:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_timeout_marks_failed_batch_continues(self, mock_sync_day, mock_score_student,
+                                                  mock_send_daily, session, seed_data, mock_settings):
+        from app.services.pipeline import run_today
+        mock_sync_day.return_value = 2
+        mock_score_student.side_effect = TimeoutError("Request timed out.")
+        mock_send_daily.return_value = None
+
+        result = run_today(seed_data['target'], session=session)
+
+        assert result["failed"] == 3
+        assert result["success"] == 0
+        failed_rows = [a for a in session.exec(select(Assessment).where(
+            Assessment.date == seed_data['target'])).all() if a.status == "failed"]
+        assert len(failed_rows) == 2
+        assert all(a.next_retry_at is not None for a in failed_rows)

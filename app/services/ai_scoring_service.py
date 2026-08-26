@@ -161,7 +161,8 @@ def score_student(context: dict[str, Any], settings: Settings) -> dict:
     )
     user_message = _build_user_message({**context, "commits": truncated_commits}, truncated=is_truncated)
 
-    client = OpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
+    client = OpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key,
+                    timeout=180.0, max_retries=1)
     response = client.chat.completions.create(
         model=settings.llm_model,
         messages=[

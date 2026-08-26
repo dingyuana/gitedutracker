@@ -41,32 +41,27 @@ def run_today(
 
     settings = get_effective_settings(session)
 
-    # Step 1: sync GitHub activity
-    sync_day(target_date, session)
+    all_students = session.exec(select(Student)).all()
+    if project_id is not None:
+        all_students = [s for s in all_students if s.project_id == project_id]
+    student_map = {s.id: s for s in all_students}
 
-    # Step 2: query applicable DailyPlans for the date
-    # student_id IS NULL → applies to all students; student_id set → only that student
+    # Step 1: build (student, plan) pairs first — sync scope derives from pairs
     all_plans = session.exec(
         select(DailyPlan).where(DailyPlan.date == target_date)
     ).all()
 
-    students = session.exec(select(Student)).all()
-    if project_id is not None:
-        students = [s for s in students if s.project_id == project_id]
-    student_map = {s.id: s for s in students}
-
-    # Build list of (student, plan) pairs
     pairs: list[tuple[Student, DailyPlan]] = []
     for plan in all_plans:
         if plan.student_id is not None:
-            s = student_map.get(plan.student_id)
-            if s is not None:
-                pairs.append((s, plan))
+            s_ = student_map.get(plan.student_id)
+            if s_ is not None:
+                pairs.append((s_, plan))
             continue
-        for s in students:
-            if s.project_id == plan.project_id:
-                pairs.append((s, plan))
-    unassigned = [s.name for s in students if s.project_id is None]
+        for s_ in all_students:
+            if s_.project_id == plan.project_id:
+                pairs.append((s_, plan))
+    unassigned = [s.name for s in all_students if s.project_id is None]
     if unassigned and all_plans:
         import logging
         logging.getLogger(__name__).warning(
@@ -78,6 +73,7 @@ def run_today(
     details: list[dict] = []
     skipped_existing = 0
 
+    done_keys = set()
     if only_missing:
         done_keys = {
             (a.student_id, a.project_id)
@@ -88,8 +84,14 @@ def run_today(
             ).all()
         }
 
-    total_to_score = sum(1 for s_, p_ in pairs
-                         if not (only_missing and (s_.id, p_.project_id) in done_keys))
+    pairs = [(s_, p_) for s_, p_ in pairs
+             if not (only_missing and (s_.id, p_.project_id) in done_keys)]
+    total_to_score = len(pairs)
+
+    # Step 2: sync GitHub activity ONLY for paired students
+    target_students = list({s_.id: s_ for s_, _ in pairs}.values())
+    sync_day(target_date, session, students=target_students)
+
     scored_count = 0
 
     if progress_cb and total_to_score > 0:
@@ -111,6 +113,43 @@ def run_today(
 
         if activity is None or activity.status != "ok":
             # No activity available, skip
+            continue
+
+        if eval_mode != "full" and activity.commits_count == 0 \
+                and (activity.loc_additions + activity.loc_deletions) == 0:
+            empty_comment = f"{target_date} 无代码提交，当日工作为空。"
+            assessment = session.exec(
+                select(Assessment).where(
+                    Assessment.student_id == student.id,
+                    Assessment.project_id == plan.project_id,
+                    Assessment.date == target_date,
+                )
+            ).first()
+            if assessment is None:
+                assessment = Assessment(student_id=student.id, project_id=plan.project_id, date=target_date)
+                session.add(assessment)
+            assessment.status = "done"
+            assessment.total_score = 0
+            assessment.quality_score = 0
+            assessment.match_score = 0
+            assessment.schedule_status = "ontime"
+            assessment.comment = empty_comment
+            assessment.evaluated_at = datetime.now(timezone.utc)
+
+            success_count += 1
+            details.append({
+                "student_id": student.id,
+                "student_name": student.name,
+                "project_id": plan.project_id,
+                "status": "empty",
+                "total_score": 0,
+            })
+            if progress_cb:
+                try:
+                    progress_cb(scored_count + success_count + failed_count,
+                                total_to_score, student.name)
+                except Exception:
+                    pass
             continue
 
         context = {
@@ -205,6 +244,25 @@ def run_today(
                 "project_id": plan.project_id,
                 "status": "failed",
                 "error": str(e),
+            })
+
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "评分异常 student=%s: %s", student.name, e
+            )
+            assessment.status = "failed"
+            assessment.saved_context_json = json.dumps(context, ensure_ascii=False)
+            assessment.next_retry_at = datetime.now(timezone.utc) + timedelta(hours=2)
+            assessment.schedule_status = "ontime"
+
+            failed_count += 1
+            details.append({
+                "student_id": student.id,
+                "student_name": student.name,
+                "project_id": plan.project_id,
+                "status": "failed",
+                "error": str(e)[:200],
             })
 
         if progress_cb:
