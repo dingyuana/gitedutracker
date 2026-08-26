@@ -275,3 +275,54 @@ class TestFetchActivityTimezone:
 
         assert since == datetime(2026, 8, 20, 16, 0, tzinfo=timezone.utc)
         assert until == datetime(2026, 8, 21, 16, 0, tzinfo=timezone.utc)
+
+
+class TestRobustness:
+
+    @patch("app.services.github_service.Github")
+    def test_commit_files_paginatedlist_no_len(self, mock_github_cls, mock_date):
+        from unittest.mock import MagicMock
+        mock_github = MagicMock()
+        mock_github_cls.return_value = mock_github
+        mock_repo = MagicMock()
+        mock_github.get_repo.return_value = mock_repo
+
+        mock_commit = MagicMock()
+        mock_commit.sha = "aaa"
+        mock_commit.commit.message = "feat: x"
+        mock_commit.stats.additions = 10
+        mock_commit.stats.deletions = 2
+        paginated_like = MagicMock()
+        mock_commit.files = paginated_like
+
+        mock_repo.get_commits.return_value = [mock_commit]
+        mock_repo.get_pulls.return_value = []
+
+        from app.services.github_service import fetch_activity
+        result = fetch_activity("user/repo", mock_date, github_token="t")
+        assert result["commits_count"] == 1
+        assert result["commits"][0]["files"] == 0
+
+    @patch("app.services.github_service.Github")
+    def test_pull_fetch_failure_is_non_fatal(self, mock_github_cls, mock_date):
+        from unittest.mock import MagicMock
+        from github import GithubException
+        mock_github = MagicMock()
+        mock_github_cls.return_value = mock_github
+        mock_repo = MagicMock()
+        mock_github.get_repo.return_value = mock_repo
+        mock_commit = MagicMock()
+        mock_commit.sha = "bbb"
+        mock_commit.commit.message = "m"
+        mock_commit.stats.additions = 1
+        mock_commit.stats.deletions = 1
+        mock_commit.files = [MagicMock()]
+        mock_repo.get_commits.return_value = [mock_commit]
+        mock_repo.get_pulls.side_effect = GithubException(403, {"message": "rate limit"}, None)
+
+        from app.services.github_service import fetch_activity
+        result = fetch_activity("user/repo", mock_date, github_token="t")
+
+        assert result["prs_opened"] == 0
+        assert result["prs_merged"] == 0
+        assert result["commits_count"] == 1

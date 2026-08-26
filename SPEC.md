@@ -178,6 +178,14 @@
 - And 提取失败时优雅降级为空列表，不阻塞评测
 - And git 网络操作强制 HTTP/1.1 规避 GnuTLS 断连；非 UTF-8 文件容错解码、空字节文件跳过
 
+### Scenario 27: 项目级异步评测与实时进度
+- Given 教师在首页项目卡片点击「评测」（配置取自顶部全局日期/模式/范围选择器）
+- When `POST /projects/{id}/run-eval` 启动后台线程任务并立即返回 job_id
+- Then 前端每 2 秒轮询 `GET /eval-progress/{job_id}` 渲染进度
+- And 同步阶段显示「正在同步」，评分阶段显示「已评估 N/M（当前学生）」
+- And 完成后展示 success/failed 统计并自动刷新页面
+- And pipeline 支持 project_id 过滤与 progress 回调；SQLite 启用 WAL 缓解并发写锁
+
 ---
 
 ## 二、接口契约
@@ -517,3 +525,7 @@ def seed_config(session: Session = None) -> None
 | 69 | 全项目快照提取（B 方案：预算/截断/跳过二进制与构建产物） | Iter 8 | `tests/unit/test_mirror_service.py` | `TestExtractSnapshot` |
 | 70 | 双评审模式贯通（pipeline 上下文 + 路由 + 前端选择器） | Iter 8 | `tests/unit/test_pipeline.py`, `tests/integration/test_routes.py` | `TestEvalModes`, `TestPostRunToday::test_eval_mode_passed_to_pipeline` |
 | 71 | 全部测试通过（pytest，含双评审模式与镜像服务） | Iter 8 | 全量 | 254 个测试用例 |
+| 72 | GitHub 健壮性：PaginatedList 兼容 + PR 拉取失败不致命 | Iter 8 | `tests/unit/test_github.py` | `TestRobustness` |
+| 73 | 项目级异步评测 + 实时进度（job 注册表/轮询端点/进度回调） | Iter 8 | `tests/unit/test_pipeline.py`, `tests/integration/test_routes.py` | `TestProjectScopedRun`, `TestPostRunToday::test_project_eval_endpoint_starts_job`, `test_eval_progress_endpoint` |
+| 74 | SQLite WAL 并发写优化 | Iter 8 | `app/database.py` | 手动验证 |
+| 75 | 全部测试通过（pytest，含异步评测与实时进度） | Iter 8 | 全量 | 261 个测试用例 |

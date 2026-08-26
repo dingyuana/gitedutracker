@@ -144,7 +144,7 @@ class TestGetIndex:
     def test_page_contains_run_today_button(self, app):
         resp = app.get("/")
         assert resp.status_code == 200
-        assert "开始评测" in resp.text
+        assert "eval-btn" in resp.text
 
     def test_page_hides_student_details(self, app, seed_data):
         resp = app.get("/")
@@ -319,10 +319,11 @@ class TestPostRunToday:
 
     def test_index_has_eval_panel_controls(self, app):
         resp = app.get("/")
-        assert 'name="only_missing"' in resp.text
+        assert 'id="eval-scope"' in resp.text
         assert "仅未测评" in resp.text
         assert "全部重新评测" in resp.text
         assert 'type="date"' in resp.text
+        assert 'id="eval-mode"' in resp.text
 
     def test_only_missing_passed_to_pipeline(self, app, db_session):
         with patch("app.api.routes.run_today") as mock_run:
@@ -343,6 +344,38 @@ class TestPostRunToday:
         assert 'name="eval_mode"' in resp.text
         assert "当日变更评审" in resp.text
         assert "全项目代码审核" in resp.text
+
+    def test_project_eval_endpoint_starts_job(self, app, seed_data):
+        with patch("app.api.routes.start_eval_job") as mock_start:
+            mock_start.return_value = "job123"
+            resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": str(seed_data['target']),
+                "eval_mode": "full",
+                "only_missing": "0",
+            })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["job_id"] == "job123"
+        _, args, kwargs = mock_start.mock_calls[0]
+        assert kwargs.get("project_id") == seed_data['p1'].id
+        assert kwargs.get("eval_mode") == "full"
+
+    def test_eval_progress_endpoint(self, app):
+        import app.services.eval_jobs as ej
+        ej._jobs["testjob"] = {"job_id": "testjob", "status": "running",
+                               "done": 3, "total": 10, "current": "张三"}
+        try:
+            resp = app.get("/eval-progress/testjob")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["done"] == 3
+            assert data["total"] == 10
+            assert data["current"] == "张三"
+        finally:
+            ej._jobs.pop("testjob", None)
+
+    def test_eval_progress_unknown_job_404(self, app):
+        assert app.get("/eval-progress/nonexistent").status_code == 404
 
 
 class TestPostStudentsImport:

@@ -2,7 +2,23 @@ from sqlmodel import SQLModel, create_engine, Session
 from app.config import get_settings
 
 settings = get_settings()
-engine = create_engine(settings.database_url, echo=False)
+
+_sqlite = settings.database_url.startswith("sqlite")
+engine = create_engine(
+    settings.database_url,
+    echo=False,
+    connect_args={"check_same_thread": False} if _sqlite else {},
+)
+
+if _sqlite:
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
 
 
 def _migrate_sqlite():

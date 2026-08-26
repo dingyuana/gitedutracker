@@ -559,3 +559,65 @@ class TestEvalModes:
         ctx = mock_score_student.call_args[0][0]
         assert ctx.get("code_diffs") == []
         assert result["success"] >= 1
+
+
+class TestProjectScopedRun:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_project_id_filters_pairs(self, mock_sync_day, mock_score_student,
+                                      mock_send_daily, session, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        target = date(2026, 8, 21)
+        p1 = Project(name='项目一'); p2 = Project(name='项目二')
+        session.add_all([p1, p2]); session.commit(); session.refresh(p1); session.refresh(p2)
+
+        sa = Student(name='甲', email='pa@x.com', github_repo='a/r', project_id=p1.id)
+        sb = Student(name='乙', email='pb@x.com', github_repo='b/r', project_id=p2.id)
+        session.add_all([sa, sb]); session.commit()
+        for s_ in [sa, sb]:
+            session.refresh(s_)
+        session.add(DailyPlan(project_id=p1.id, date=target, content='任务一', student_id=None))
+        session.add(DailyPlan(project_id=p2.id, date=target, content='任务二', student_id=None))
+        session.add(ScoringConfig())
+        for s_ in [sa, sb]:
+            session.add(GithubActivity(student_id=s_.id, date=target, commits_count=1, status="ok"))
+        session.commit()
+
+        mock_sync_day.return_value = 1
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(target, session=session, project_id=p1.id)
+
+        assert result["success"] == 1
+        pairs = {(a.student_id, a.project_id) for a in
+                 session.exec(select(Assessment).where(Assessment.date == target)).all()}
+        assert pairs == {(sa.id, p1.id)}
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_progress_callback_reports(self, mock_sync_day, mock_score_student,
+                                       mock_send_daily, session, seed_data,
+                                       mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        events = []
+
+        def cb(done, total, current):
+            events.append((done, total, current))
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        run_today(seed_data['target'], session=session, progress_cb=cb)
+
+        assert events[0] == (0, 3, "")
+        scoring_events = [e for e in events if e[0] > 0]
+        assert len(scoring_events) == 3
+        dones = [e[0] for e in scoring_events]
+        assert dones == sorted(dones)
+        assert events[-1][0] == events[-1][1] == 3
+        assert all(isinstance(e[2], str) and e[2] for e in scoring_events)

@@ -20,6 +20,8 @@ def run_today(
     session: Optional[Session] = None,
     only_missing: bool = False,
     eval_mode: str = "diff",
+    project_id: Optional[int] = None,
+    progress_cb=None,
 ) -> dict:
     """Run the full auto-scoring pipeline for a given date.
 
@@ -49,6 +51,8 @@ def run_today(
     ).all()
 
     students = session.exec(select(Student)).all()
+    if project_id is not None:
+        students = [s for s in students if s.project_id == project_id]
     student_map = {s.id: s for s in students}
 
     # Build list of (student, plan) pairs
@@ -83,6 +87,16 @@ def run_today(
                 )
             ).all()
         }
+
+    total_to_score = sum(1 for s_, p_ in pairs
+                         if not (only_missing and (s_.id, p_.project_id) in done_keys))
+    scored_count = 0
+
+    if progress_cb and total_to_score > 0:
+        try:
+            progress_cb(0, total_to_score, "")
+        except Exception:
+            pass
 
     for student, plan in pairs:
         if only_missing and (student.id, plan.project_id) in done_keys:
@@ -185,6 +199,13 @@ def run_today(
                 "status": "failed",
                 "error": str(e),
             })
+
+        if progress_cb:
+            try:
+                progress_cb(scored_count + success_count + failed_count,
+                            total_to_score, student.name)
+            except Exception:
+                pass
 
     session.commit()
 

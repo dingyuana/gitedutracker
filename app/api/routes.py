@@ -10,6 +10,7 @@ from app.models import Student, Project, DailyPlan, Assessment, ScoringConfig
 from app.utils.export import export_daily
 from app.services.import_service import import_students
 from app.services.pipeline import run_today
+from app.services.eval_jobs import start_eval_job, get_job
 from app.middleware.auth import require_auth, login_endpoint, security
 
 router = APIRouter()
@@ -579,6 +580,33 @@ async def run_today_endpoint(
     if str(form_data.get("redirect", "")).lower() in ("1", "true"):
         return RedirectResponse(url=f"/results?date={target_date}", status_code=303)
     return result
+
+
+@router.post("/projects/{project_id}/run-eval")
+def run_project_eval(
+    project_id: int,
+    auth_check=Depends(require_auth),
+    date: str = Form(None),
+    eval_mode: str = Form("diff"),
+    only_missing: str = Form("0"),
+):
+    target_date = datetime.date.fromisoformat(date) if date else _date.today()
+    job_id = start_eval_job(
+        target_date,
+        project_id=project_id,
+        only_missing=str(only_missing).lower() in ("1", "true", "on"),
+        eval_mode=eval_mode if eval_mode in ("diff", "full") else "diff",
+    )
+    return JSONResponse({"job_id": job_id})
+
+
+@router.get("/eval-progress/{job_id}")
+def eval_progress(job_id: str, auth_check=Depends(require_auth)):
+    from app.services.eval_jobs import get_job
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return JSONResponse(job)
 
 
 @router.post("/api/login", response_class=JSONResponse)

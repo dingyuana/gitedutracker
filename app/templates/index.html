@@ -4,7 +4,27 @@
 <h1>项目看板 <small style="font-size:0.9rem;color:#888">{{ today }}</small></h1>
 
 <div class="card">
-    <h3>新建项目</h3>
+    <div class="inline-form">
+        <label>评测日期
+            <input type="date" name="eval_date" id="eval-date" value="{{ today }}">
+        </label>
+        <label>评审模式
+            <select name="eval_mode" id="eval-mode">
+                <option value="diff">当日变更评审（快）</option>
+                <option value="full">全项目代码审核（深入）</option>
+            </select>
+        </label>
+        <label>范围
+            <select name="eval_scope" id="eval-scope">
+                <option value="1">仅未测评</option>
+                <option value="0">全部重新评测</option>
+            </select>
+        </label>
+    </div>
+    <p style="color:#5f6368;font-size:0.82rem;margin:0.5rem 0 0">
+        在下方各项目卡片点击「评测」即按以上配置运行该项目的全班评分。
+    </p>
+    <h3 style="margin-top:1rem">新建项目</h3>
     <form action="/projects" method="POST" class="inline-form">
         <input type="text" name="name" placeholder="项目名称" required>
         <input type="text" name="description" placeholder="描述（可选）">
@@ -43,6 +63,9 @@
             {% endif %}
         </div>
         <div class="card-actions">
+            <button type="button" class="btn btn-small btn-success eval-btn"
+                    data-project="{{ c.project.id }}"
+                    data-name="{{ c.project.name }}">评测</button>
             <a href="/projects/{{ c.project.id }}/edit" class="btn btn-small">编辑</a>
             <form action="/projects/{{ c.project.id }}/complete" method="POST" style="display:inline" onsubmit="return confirm('标记「{{ c.project.name }}」为已完成？')">
                 <button type="submit" class="btn btn-small btn-success">完成</button>
@@ -50,6 +73,10 @@
             <form action="/projects/{{ c.project.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('确定删除项目「{{ c.project.name }}」？关联的计划和评估将一并删除')">
                 <button type="submit" class="btn btn-small btn-danger">删除</button>
             </form>
+        </div>
+        <div class="eval-progress" id="progress-{{ c.project.id }}" hidden>
+            <div class="eval-progress-text"></div>
+            <div class="progress-wrap"><div class="progress-bar" style="width:0%"></div></div>
         </div>
     </div>
     {% endfor %}
@@ -82,30 +109,60 @@
 </div>
 {% endif %}
 
-<div class="card">
-    <h3>运行评测</h3>
-    <form action="/run-today" method="POST" class="inline-form">
-        <input type="hidden" name="redirect" value="1">
-        <label>评测日期
-            <input type="date" name="date" value="{{ today }}">
-        </label>
-        <label>评测范围
-            <select name="only_missing">
-                <option value="1">仅未测评的学生</option>
-                <option value="0">全部重新评测</option>
-            </select>
-        </label>
-        <label>评审模式
-            <select name="eval_mode">
-                <option value="diff">当日变更评审（快）</option>
-                <option value="full">全项目代码审核（深入）</option>
-            </select>
-        </label>
-        <button type="submit" class="btn btn-success" onclick="this.form.submit(); this.disabled=true; this.innerText='评测中…'">开始评测</button>
-    </form>
-    <p style="color:#5f6368;font-size:0.82rem;margin:0.5rem 0 0">
-        评分依据所选日期的计划（教学目标）进行；「仅未测评」会跳过已完成的学生，失败的自动重试。
-        首次同步全班仓库约需 1 分钟，请耐心等待。
-    </p>
-</div>
+<script>
+(function () {
+    document.querySelectorAll(".eval-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            var pid = btn.dataset.project;
+            var box = document.getElementById("progress-" + pid);
+            var textEl = box.querySelector(".eval-progress-text");
+            var bar = box.querySelector(".progress-bar");
+            box.hidden = false;
+            textEl.textContent = "正在启动评测…";
+            bar.style.width = "5%";
+
+            var fd = new FormData();
+            fd.append("date", document.getElementById("eval-date").value);
+            fd.append("eval_mode", document.getElementById("eval-mode").value);
+            fd.append("only_missing", document.getElementById("eval-scope").value);
+
+            fetch("/projects/" + pid + "/run-eval", { method: "POST", body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    var jobId = d.job_id;
+                    btn.disabled = true;
+                    btn.innerText = "评测中…";
+                    var timer = setInterval(function () {
+                        fetch("/eval-progress/" + jobId)
+                            .then(function (r) { return r.json(); })
+                            .then(function (p) {
+                                if (p.total > 0) {
+                                    var pct = Math.round(p.done / p.total * 100);
+                                    bar.style.width = pct + "%";
+                                    textEl.textContent = "已评估 " + p.done + "/" + p.total +
+                                        (p.current ? "（当前：" + p.current + "）" : "");
+                                }
+                                if (p.status === "finished") {
+                                    clearInterval(timer);
+                                    bar.style.width = "100%";
+                                    var res = p.result || {};
+                                    textEl.textContent = "✅ 完成：成功 " + (res.success || 0) +
+                                        "，失败 " + (res.failed || 0) + "，正在刷新…";
+                                    setTimeout(function () { location.reload(); }, 1500);
+                                } else if (p.status === "error") {
+                                    clearInterval(timer);
+                                    textEl.textContent = "❌ 评测出错：" + (p.error || "");
+                                    btn.disabled = false;
+                                    btn.innerText = "评测";
+                                }
+                            });
+                    }, 2000);
+                })
+                .catch(function () {
+                    textEl.textContent = "❌ 启动失败，请重试";
+                });
+        });
+    });
+})();
+</script>
 {% endblock %}

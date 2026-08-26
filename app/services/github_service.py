@@ -86,15 +86,20 @@ def fetch_activity(repo: str, date: date, github_token: str = None) -> dict:
             "message": commit.commit.message,
             "additions": additions,
             "deletions": deletions,
-            "files": len(commit.files),
+            "files": len(list(commit.files)),
         })
 
     try:
         pulls = list(gh_repo.get_pulls(state="all"))
     except GithubException as e:
-        if e.status == 403:
-            raise GitHubPermissionError(f"Permission denied to read PRs: {repo}") from e
-        raise GitHubError(f"GitHub API error: {e}") from e
+        # PR 数据为辅助指标：拉取失败（限流/权限）不致命，置零继续
+        import logging
+        logging.getLogger(__name__).warning("PR 拉取失败 %s: %s", repo, e)
+        pulls = []
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("PR 拉取失败 %s: %s", repo, e)
+        pulls = []
 
     prs_opened = sum(1 for p in pulls if p.state == "open")
     prs_merged = sum(1 for p in pulls if p.state == "merged")
