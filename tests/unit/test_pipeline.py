@@ -621,3 +621,32 @@ class TestProjectScopedRun:
         assert dones == sorted(dones)
         assert events[-1][0] == events[-1][1] == 3
         assert all(isinstance(e[2], str) and e[2] for e in scoring_events)
+
+
+class TestScoreKeyMapping:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_llm_scores_actually_weighted_into_total(self, mock_sync_day, mock_score_student,
+                                                     mock_send_daily, session, seed_data,
+                                                     mock_settings):
+        from app.services.pipeline import run_today
+
+        llm = {"quality_score": 90, "match_score": 60, "completion": True,
+               "schedule_status": "ontime", "comment": "c", "reasoning": "r"}
+        mock_sync_day.return_value = 1
+        mock_score_student.return_value = llm
+        mock_send_daily.return_value = None
+        # seed 配置 w_v=w_q=w_m=0.333, loc_threshold=100；当日 loc=50+10=60 → volume=30
+        # base = (0.333*30 + 0.333*90 + 0.333*60) = 60（权重归一后各占 1/3）
+
+        result = run_today(seed_data['target'], session=session)
+
+        assert result["success"] >= 1
+        a = [a for a in session.exec(select(Assessment).where(
+            Assessment.date == seed_data['target'])).all() if a.status == "done"][0]
+        assert a.total_score is not None
+        assert abs(a.quality_score - 90) < 0.01
+        # 总分必须体现质量分 90 的贡献，而非只剩进度加减分
+        assert a.total_score > 20, f"total={a.total_score} 说明质量分未计入"

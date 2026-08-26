@@ -166,7 +166,14 @@ def run_today(
                 config = _DefaultConfig()
 
             subscores["loc"] = context["loc_additions"] + context["loc_deletions"]
-            total_score = compute_final(subscores, config)
+            engine_input = {
+                "loc": subscores["loc"],
+                "volume": subscores.get("volume"),
+                "quality": subscores.get("quality_score", 0),
+                "match": subscores.get("match_score", 0),
+                "schedule_status": subscores.get("schedule_status", "ontime"),
+            }
+            total_score = compute_final(engine_input, config)
 
             assessment.status = "done"
             assessment.quality_score = subscores.get("quality_score")
