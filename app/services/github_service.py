@@ -25,6 +25,8 @@ def _normalize_repo(repo: str) -> str:
     repo = repo.strip()
     if not repo:
         raise GitHubError("Empty repository name")
+    if repo.endswith(".git"):
+        repo = repo[:-4]
     if repo.startswith("http"):
         parts = urlparse(repo).path.rstrip("/").split("/")
         if len(parts) < 2:
@@ -33,18 +35,18 @@ def _normalize_repo(repo: str) -> str:
     return repo
 
 
-def _date_to_utc_range(d: date) -> tuple[str, str]:
+def _date_to_utc_range(d: date) -> tuple[datetime, datetime]:
     tz = ZoneInfo("Asia/Shanghai")
     start = datetime.combine(d, datetime.min.time(), tzinfo=tz)
     end = datetime.combine(d + timedelta(days=1), datetime.min.time(), tzinfo=tz)
-    return start.astimezone(timezone.utc).isoformat(), end.astimezone(timezone.utc).isoformat()
+    return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
 
 
 def fetch_activity(repo: str, date: date, github_token: str = None) -> dict:
     repo_normalized = _normalize_repo(repo)
     since, until = _date_to_utc_range(date)
 
-    gh = Github(github_token) if github_token else Github()
+    gh = Github(retry=None) if not github_token else Github(github_token, retry=None)
 
     try:
         gh_repo = gh.get_repo(repo_normalized)
@@ -52,6 +54,8 @@ def fetch_activity(repo: str, date: date, github_token: str = None) -> dict:
         if e.status == 404:
             raise GitHubNotFoundError(f"Repository not found: {repo}") from e
         if e.status == 403:
+            if "rate limit" in str(e.data).lower():
+                raise GitHubError(f"GitHub rate limit exceeded for: {repo}") from e
             raise GitHubPermissionError(f"Permission denied for repository: {repo}") from e
         raise GitHubError(f"GitHub API error: {e}") from e
 
@@ -61,10 +65,12 @@ def fetch_activity(repo: str, date: date, github_token: str = None) -> dict:
         if e.status == 404:
             raise GitHubNotFoundError(f"Repository not found or no commits: {repo}") from e
         if e.status == 403:
+            if "rate limit" in str(e.data).lower():
+                raise GitHubError(f"GitHub rate limit exceeded for: {repo}") from e
             raise GitHubPermissionError(f"Permission denied: {repo}") from e
         raise GitHubError(f"GitHub API error: {e}") from e
 
-    commits_list = list(commits_page.get_page())
+    commits_list = list(commits_page)
 
     commits = []
     total_additions = 0

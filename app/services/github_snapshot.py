@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import date
 from typing import Optional
 
@@ -8,6 +9,13 @@ from sqlmodel import Session, select
 
 from app.models import GithubActivity, Student
 from app.services.github_service import fetch_activity
+
+SYNC_INTERVAL_SECONDS = 3.0
+RATE_LIMIT_COOLDOWN_SECONDS = 45
+
+
+def _is_rate_limit_error(e: Exception) -> bool:
+    return "rate limit" in str(e).lower()
 
 
 def sync_day(target_date: date, session: Session = None) -> int:
@@ -19,12 +27,23 @@ def sync_day(target_date: date, session: Session = None) -> int:
     students = session.exec(select(Student)).all()
     success_count = 0
 
-    for student in students:
+    for idx, student in enumerate(students):
+        if idx > 0:
+            time.sleep(SYNC_INTERVAL_SECONDS)
         try:
-            activity_data = fetch_activity(
-                repo=student.github_repo,
-                date=target_date,
-            )
+            activity_data = None
+            for attempt in (1, 2):
+                try:
+                    activity_data = fetch_activity(
+                        repo=student.github_repo,
+                        date=target_date,
+                    )
+                    break
+                except Exception as e:
+                    if attempt == 1 and _is_rate_limit_error(e):
+                        time.sleep(RATE_LIMIT_COOLDOWN_SECONDS)
+                        continue
+                    raise
             activity = session.exec(
                 select(GithubActivity).where(
                     GithubActivity.student_id == student.id,

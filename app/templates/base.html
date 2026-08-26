@@ -286,7 +286,26 @@
             color: var(--text-muted);
             line-height: 1.5;
         }
-        
+
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .chart-item {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.5rem;
+        }
+
+        .chart-meta {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-align: center;
+            padding-top: 0.25rem;
+        }
+
         table {
             width: 100%;
             border-collapse: separate;

@@ -83,8 +83,23 @@
 {% endif %}
 
 <div class="card">
-    <form action="/run-today" method="POST" onsubmit="return confirm('确定要运行今日评测吗？')">
-        <button type="submit" class="btn btn-success">今日评测</button>
+    <h3>运行评测</h3>
+    <form action="/run-today" method="POST" class="inline-form">
+        <input type="hidden" name="redirect" value="1">
+        <label>评测日期
+            <input type="date" name="date" value="{{ today }}">
+        </label>
+        <label>评测范围
+            <select name="only_missing">
+                <option value="1">仅未测评的学生</option>
+                <option value="0">全部重新评测</option>
+            </select>
+        </label>
+        <button type="submit" class="btn btn-success" onclick="this.form.submit(); this.disabled=true; this.innerText='评测中…'">开始评测</button>
     </form>
+    <p style="color:#5f6368;font-size:0.82rem;margin:0.5rem 0 0">
+        评分依据所选日期的计划（教学目标）进行；「仅未测评」会跳过已完成的学生，失败的自动重试。
+        首次同步全班仓库约需 1 分钟，请耐心等待。
+    </p>
 </div>
 {% endblock %}

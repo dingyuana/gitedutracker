@@ -85,6 +85,25 @@
 </div>
 
 <div class="card">
+    <h3>📈 每日平均分趋势</h3>
+    {{ avg_chart | safe }}
+</div>
+
+{% if student_charts %}
+<div class="card">
+    <h3>👤 学生分数变化（{{ student_charts|length }} 人）</h3>
+    <div class="chart-grid">
+        {% for sc in student_charts %}
+        <div class="chart-item">
+            {{ sc.chart | safe }}
+            <div class="chart-meta">已评 {{ sc.count }} 天</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
     <h3>评测记录（分数与评语）</h3>
     {% if assessments_by_date %}
         {% for a_date, items in assessments_by_date %}

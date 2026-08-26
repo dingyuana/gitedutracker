@@ -60,6 +60,12 @@ class TestNormalizeRepo:
     def test_url_format(self):
         assert _normalize_repo("https://github.com/user/repo") == "user/repo"
 
+    def test_url_format_with_git_suffix(self):
+        assert _normalize_repo("https://github.com/user/repo.git") == "user/repo"
+
+    def test_owner_repo_with_git_suffix(self):
+        assert _normalize_repo("user/repo.git") == "user/repo"
+
     def test_url_format_with_trailing_slash(self):
         assert _normalize_repo("https://github.com/user/repo/") == "user/repo"
 
@@ -73,37 +79,30 @@ class TestNormalizeRepo:
 
 class TestDateToUtcRange:
 
-    def test_returns_tuple_of_strings(self, mock_date):
+    def test_returns_datetime_objects(self, mock_date):
         since, until = _date_to_utc_range(mock_date)
-        assert isinstance(since, str)
-        assert isinstance(until, str)
+        assert isinstance(since, datetime)
+        assert isinstance(until, datetime)
 
     def test_until_is_one_day_after_since(self, mock_date):
         since, until = _date_to_utc_range(mock_date)
-        since_dt = datetime.fromisoformat(since)
-        until_dt = datetime.fromisoformat(until)
-        delta = until_dt - since_dt
-        assert delta == timedelta(days=1)
+        assert until - since == timedelta(days=1)
 
     def test_times_are_utc(self, mock_date):
         since, until = _date_to_utc_range(mock_date)
-        for s in [since, until]:
-            dt = datetime.fromisoformat(s)
-            assert dt.tzinfo == timezone.utc
+        assert since.tzinfo == timezone.utc
+        assert until.tzinfo == timezone.utc
 
     def test_shanghai_midnight_becomes_utc_midnight_minus_8(self, mock_date):
         # Asia/Shanghai is UTC+8, so midnight CST = 16:00 previous day UTC
         since, until = _date_to_utc_range(mock_date)
-        since_dt = datetime.fromisoformat(since)
-        # Should be 16:00 UTC on 2026-08-20
-        assert since_dt.hour == 16
-        assert since_dt.day == 20
-        assert since_dt.month == 8
+        assert since.hour == 16
+        assert since.day == 20
+        assert since.month == 8
 
-        until_dt = datetime.fromisoformat(until)
-        assert until_dt.hour == 16
-        assert until_dt.day == 21
-        assert until_dt.month == 8
+        assert until.hour == 16
+        assert until.day == 21
+        assert until.month == 8
 
 
 class TestFetchActivitySuccess:
@@ -134,8 +133,7 @@ class TestFetchActivitySuccess:
         mock_commit2.stats.deletions = 8
         mock_commit2.files = [MagicMock(filename="auth.py")]
 
-        mock_commits_page = MagicMock()
-        mock_commits_page.get_page.return_value = [mock_commit, mock_commit2]
+        mock_commits_page = [mock_commit, mock_commit2]
         mock_repo.get_commits.return_value = mock_commits_page
 
         # PRs
@@ -275,8 +273,5 @@ class TestFetchActivityTimezone:
         since = call_kwargs["since"]
         until = call_kwargs["until"]
 
-        since_dt = datetime.fromisoformat(since)
-        until_dt = datetime.fromisoformat(until)
-
-        assert since_dt == datetime(2026, 8, 20, 16, 0, tzinfo=timezone.utc)
-        assert until_dt == datetime(2026, 8, 21, 16, 0, tzinfo=timezone.utc)
+        assert since == datetime(2026, 8, 20, 16, 0, tzinfo=timezone.utc)
+        assert until == datetime(2026, 8, 21, 16, 0, tzinfo=timezone.utc)

@@ -326,3 +326,17 @@ class TestStudentImportIdempotent:
         s = session.exec(select(Student)).first()
         assert len(session.exec(select(Student)).all()) == 1
         assert s.student_no == '222'
+
+    def test_reimport_url_repo_stays_normalized(self, session, tmp_path):
+        from app.services.import_service import import_students
+        xlsx = str(tmp_path / "students_url.xlsx")
+        _write_xlsx(xlsx, ['姓名', '个人邮箱地址', 'github仓库地址'], [
+            ['周九', 'zj@example.com', 'https://github.com/zhoujiu/myrepo'],
+        ])
+        import_students(xlsx, session=session)
+        _write_xlsx(xlsx, ['姓名', '个人邮箱地址', 'github仓库地址'], [
+            ['周九', 'zj@example.com', 'https://github.com/zhoujiu/myrepo'],
+        ])
+        import_students(xlsx, session=session)
+        s = session.exec(select(Student)).first()
+        assert s.github_repo == 'zhoujiu/myrepo'

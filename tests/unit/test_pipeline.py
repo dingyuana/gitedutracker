@@ -426,3 +426,61 @@ class TestProjectScoping:
         pairs = {(a.student_id, a.project_id) for a in assessments}
         assert pairs == {(sa.id, p1.id), (sb.id, p2.id)}
         assert result["success"] == 2
+
+
+class TestOnlyMissingScope:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_only_missing_skips_done_assessments(self, mock_sync_day, mock_score_student,
+                                                 mock_send_daily, session, seed_data,
+                                                 mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        target = seed_data['target']
+        session.add(Assessment(
+            student_id=seed_data['s1'].id,
+            project_id=seed_data['p1'].id,
+            date=target,
+            status="done",
+            total_score=77,
+        ))
+        session.commit()
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(target, session=session, only_missing=True)
+
+        assert mock_score_student.call_count == 1
+        done_pairs = {
+            (a.student_id, a.project_id)
+            for a in session.exec(select(Assessment).where(Assessment.date == target)).all()
+            if a.status == "done"
+        }
+        assert (seed_data['s1'].id, seed_data['p1'].id) in done_pairs
+        assert result["success"] == 1
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_only_missing_retries_failed(self, mock_sync_day, mock_score_student,
+                                         mock_send_daily, session, seed_data,
+                                         mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        target = seed_data['target']
+        session.add(Assessment(
+            student_id=seed_data['s1'].id,
+            project_id=seed_data['p1'].id,
+            date=target,
+            status="failed",
+            attempts=1,
+        ))
+        session.commit()
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        run_today(target, session=session, only_missing=True)
+
+        assert mock_score_student.call_count == 3

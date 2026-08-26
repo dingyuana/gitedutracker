@@ -2,6 +2,7 @@ import pandas as pd
 from sqlmodel import Session, select
 from datetime import date
 from app.models import Student, Project, DailyPlan
+from app.services.github_service import _normalize_repo
 
 
 STUDENT_COLUMN_ALIASES = {
@@ -88,7 +89,7 @@ def import_students(filepath: str, session: Session = None, project_id: int = No
         student_data = {
             'name': str(name).strip(),
             'email': str(email).strip(),
-            'github_repo': str(repo).strip(),
+            'github_repo': _normalize_repo(str(repo).strip()),
         }
         if 'student_no' in df.columns and not pd.isna(row.get('student_no')):
             student_data['student_no'] = str(row['student_no']).strip()

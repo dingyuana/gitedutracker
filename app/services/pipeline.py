@@ -14,12 +14,13 @@ from app.services.email_service import send_daily_comments
 from app.services.settings_service import get_effective_settings
 
 
-def run_today(target_date: date, session: Optional[Session] = None) -> dict:
+def run_today(target_date: date, session: Optional[Session] = None, only_missing: bool = False) -> dict:
     """Run the full auto-scoring pipeline for a given date.
 
     1. Sync GitHub activity for all students.
     2. Find all applicable DailyPlans for the date.
     3. For each (student, project, date) combo: score → compute → persist.
+       only_missing=True 时跳过已有 done 评测的组合（failed 仍会重试）。
     4. LLM failures are caught and stored as failed with retry info.
 
     Returns:
@@ -64,8 +65,22 @@ def run_today(target_date: date, session: Optional[Session] = None) -> dict:
     success_count = 0
     failed_count = 0
     details: list[dict] = []
+    skipped_existing = 0
+
+    if only_missing:
+        done_keys = {
+            (a.student_id, a.project_id)
+            for a in session.exec(
+                select(Assessment).where(
+                    Assessment.date == target_date, Assessment.status == "done"
+                )
+            ).all()
+        }
 
     for student, plan in pairs:
+        if only_missing and (student.id, plan.project_id) in done_keys:
+            skipped_existing += 1
+            continue
         activity = session.exec(
             select(GithubActivity).where(
                 GithubActivity.student_id == student.id,
@@ -160,5 +175,6 @@ def run_today(target_date: date, session: Optional[Session] = None) -> dict:
     return {
         "success": success_count,
         "failed": failed_count,
+        "skipped_existing": skipped_existing,
         "details": details,
     }

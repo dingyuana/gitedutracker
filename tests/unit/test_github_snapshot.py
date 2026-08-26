@@ -185,3 +185,74 @@ class TestSyncDayEmpty:
 
         assert result == 0
         mock_fetch.assert_not_called()
+
+
+class TestSyncPacing:
+
+    def test_sleeps_between_students(self, session):
+        from unittest.mock import patch, MagicMock
+        from app.services import github_snapshot
+        from app.models import Student
+        from datetime import date
+
+        s1 = Student(name='甲', email='a@x.com', github_repo='a/r')
+        s2 = Student(name='乙', email='b@x.com', github_repo='b/r')
+        session.add_all([s1, s2])
+        session.commit()
+
+        with patch.object(github_snapshot, "fetch_activity", return_value={
+            "commits_count": 0, "commits": [], "prs_opened": 0,
+            "prs_merged": 0, "loc_additions": 0, "loc_deletions": 0,
+        }), patch.object(github_snapshot.time, "sleep") as mock_sleep:
+            github_snapshot.sync_day(date(2026, 8, 21), session=session)
+
+        assert mock_sleep.call_count >= 1
+
+
+class TestRateLimitRetry:
+
+    def test_rate_limit_error_retries_once_then_succeeds(self, session):
+        from unittest.mock import patch, MagicMock, call
+        from app.services import github_snapshot
+        from app.models import Student
+        from datetime import date
+
+        s1 = Student(name='甲', email='rl@x.com', github_repo='a/r')
+        session.add(s1)
+        session.commit()
+
+        responses = [Exception("GitHub rate limit exceeded for: a/r"), {
+            "commits_count": 1, "commits": [], "prs_opened": 0,
+            "prs_merged": 0, "loc_additions": 5, "loc_deletions": 1,
+        }]
+
+        def fake_fetch(**kwargs):
+            r = responses.pop(0)
+            if isinstance(r, Exception):
+                raise r
+            return r
+
+        with patch.object(github_snapshot, "fetch_activity", side_effect=fake_fetch), \
+             patch.object(github_snapshot.time, "sleep") as mock_sleep:
+            count = github_snapshot.sync_day(date(2026, 8, 21), session=session)
+
+        assert count == 1
+        assert mock_sleep.call_args_list[-1] == call(github_snapshot.RATE_LIMIT_COOLDOWN_SECONDS)
+
+    def test_non_rate_limit_fails_fast(self, session):
+        from unittest.mock import patch
+        from app.services import github_snapshot
+        from app.models import Student, GithubActivity
+        from datetime import date
+
+        s1 = Student(name='乙', email='nf@x.com', github_repo='b/r')
+        session.add(s1)
+        session.commit()
+
+        with patch.object(github_snapshot, "fetch_activity", side_effect=Exception("Repository not found")), \
+             patch.object(github_snapshot.time, "sleep") as mock_sleep:
+            github_snapshot.sync_day(date(2026, 8, 21), session=session)
+
+        act = session.exec(select(GithubActivity)).first()
+        assert act.status == "failed"
+        assert len(mock_sleep.call_args_list) <= 1

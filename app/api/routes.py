@@ -193,6 +193,34 @@ def project_detail_page(
         })
     assessments_by_date = sorted(by_date.items(), key=lambda kv: kv[0], reverse=True)
 
+    from app.utils.svg_chart import build_line_chart
+
+    done_sorted = sorted(
+        (a for a in assessments if a.status == "done" and a.total_score is not None),
+        key=lambda a: a.date,
+    )
+    score_by_date: dict = {}
+    per_student: dict = {}
+    for a in done_sorted:
+        score_by_date.setdefault(a.date, []).append(a.total_score)
+        per_student.setdefault(a.student_id, []).append(a)
+    avg_series = [
+        (d.strftime("%m-%d"), round(sum(vs) / len(vs), 1))
+        for d, vs in sorted(score_by_date.items())
+    ]
+    avg_chart = build_line_chart(avg_series, title="项目每日平均分", color="#1a73e8")
+
+    student_charts = []
+    for sid, alist in sorted(per_student.items(), key=lambda kv: kv[1][0].date):
+        st = session.get(Student, sid)
+        sname = st.name if st else f"#{sid}"
+        series = [(a.date.strftime("%m-%d"), a.total_score) for a in alist]
+        student_charts.append({
+            "name": sname,
+            "count": len(series),
+            "chart": build_line_chart(series, title=f"{sname} · 分数变化", color="#34a853"),
+        })
+
     day_label = None
     progress_pct = None
     if project.start_date:
@@ -216,6 +244,8 @@ def project_detail_page(
         "assessments_by_date": assessments_by_date,
         "day_label": day_label,
         "progress_pct": progress_pct,
+        "avg_chart": avg_chart,
+        "student_charts": student_charts,
     })
 
 
@@ -517,20 +547,34 @@ def export_page(
 
 
 @router.post("/run-today")
-def run_today_endpoint(
+async def run_today_endpoint(
+    request: Request,
     auth_check=Depends(require_auth),
-    date: str = None,
     session: Session = Depends(get_session),
 ):
-    if not date:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=422, detail="缺少 date 参数")
-    try:
-        target_date = datetime.date.fromisoformat(date)
-    except ValueError:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=422, detail="日期格式无效")
-    result = run_today(target_date, session=session)
+    qp = request.query_params
+    form_data: dict = {}
+    if "form" in request.headers.get("content-type", ""):
+        form = await request.form()
+        form_data = {k: form.get(k) for k in ("date", "only_missing", "redirect")}
+
+    date = qp.get("date") or form_data.get("date")
+    only_missing_raw = qp.get("only_missing") if qp.get("only_missing") is not None else form_data.get("only_missing")
+    only_missing = str(only_missing_raw).lower() in ("1", "true", "on") if only_missing_raw is not None else False
+
+    if date:
+        try:
+            target_date = datetime.date.fromisoformat(str(date))
+        except ValueError:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=422, detail="日期格式无效")
+    else:
+        target_date = _date.today()
+
+    result = run_today(target_date, session=session, only_missing=only_missing)
+
+    if str(form_data.get("redirect", "")).lower() in ("1", "true"):
+        return RedirectResponse(url=f"/results?date={target_date}", status_code=303)
     return result
 
 

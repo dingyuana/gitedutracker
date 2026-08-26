@@ -153,6 +153,22 @@
 - And `run_today` 与后台重试使用 DB 配置覆盖 `.env` 生效
 - And 未配置任何 DB 值时完全回落到 `.env`
 
+### Scenario 24: 首页评测面板（日期与范围可控）
+- Given 教师在首页「运行评测」卡片
+- When 选择评测日期（默认今天）与范围（仅未测评 / 全部重新评测）并提交
+- Then `POST /run-today` 接受 query 或表单参数；缺省日期回落到服务器今天
+- And 「仅未测评」跳过该日期已 done 的（学生,项目）组合，failed 的仍会重试
+- And 「全部重新评测」对全部组合重新打分覆盖
+- And 表单提交（redirect=1）完成后 303 跳转到 `/results?date=<日期>` 查看
+- And 评分始终依据所选日期的计划内容（教学目标）
+
+### Scenario 25: 分数趋势可视化
+- Given 某项目存在已完成的历史评测
+- When 访问项目详情页 `/projects/{id}`
+- Then 展示「每日平均分趋势」折线图（SVG，零外部依赖）
+- And 展示每个学生独立的分数变化折线图及已评天数
+- And 无数据时显示占位提示而非空白
+
 ---
 
 ## 二、接口契约
@@ -483,3 +499,7 @@ def seed_config(session: Session = None) -> None
 | 60 | 项目日程详情页（学生+日程+分数评语按日查询） | Iter 8 | `tests/integration/test_routes.py` | `TestProjectDetail` |
 | 61 | LLM 参数前端配置（DB 覆盖 env，Key 留空保持） | Iter 8 | `tests/unit/test_llm_config.py`, `tests/integration/test_routes.py` | `TestLlmConfigEffectiveSettings`, `TestPostConfig::test_post_llm_config_saves` 等 |
 | 62 | 全部测试通过（pytest，含看板合并与 LLM 配置） | Iter 8 | 全量 | 214 个测试用例 |
+| 63 | 评测面板：日期默认今天、仅未测评/全部重评、表单跳转 | Iter 8 | `tests/integration/test_routes.py`, `tests/unit/test_pipeline.py` | `TestPostRunToday::test_without_date_defaults_to_today`, `test_only_missing_passed_to_pipeline`, `TestOnlyMissingScope` |
+| 64 | 分数趋势图（平均分+每学生 SVG 折线） | Iter 8 | `tests/unit/test_svg_chart.py`, `tests/integration/test_routes.py` | `TestBuildLineChart`, `TestProjectDetail::test_detail_shows_score_trend_charts` |
+| 65 | GitHub 同步节流防反滥用限流 | Iter 8 | `tests/unit/test_github_snapshot.py` | `TestSyncPacing::test_sleeps_between_students` |
+| 66 | 全部测试通过（pytest，含评测面板与图表） | Iter 8 | 全量 | 230 个测试用例 |

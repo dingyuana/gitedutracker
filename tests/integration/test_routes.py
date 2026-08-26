@@ -139,7 +139,7 @@ class TestGetIndex:
     def test_page_contains_run_today_button(self, app):
         resp = app.get("/")
         assert resp.status_code == 200
-        assert "今日评测" in resp.text
+        assert "开始评测" in resp.text
 
     def test_page_hides_student_details(self, app, seed_data):
         resp = app.get("/")
@@ -278,6 +278,13 @@ class TestPostRunToday:
         resp = app.post("/run-today", params={"date": "2026-08-21"})
         assert resp.status_code == 200
 
+    def test_without_date_defaults_to_today(self, app):
+        resp = app.post("/run-today")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "success" in data
+        assert "failed" in data
+
     def test_returns_summary(self, app, seed_data):
         resp = app.post("/run-today", params={"date": str(seed_data['target'])})
         assert resp.status_code == 200
@@ -295,6 +302,29 @@ class TestPostRunToday:
     def test_invalid_date_returns_422(self, app):
         resp = app.post("/run-today", params={"date": "not-a-date"})
         assert resp.status_code == 422
+
+    def test_form_submit_redirects_to_results(self, app, seed_data):
+        resp = app.post("/run-today", data={
+            "date": str(seed_data['target']),
+            "only_missing": "0",
+            "redirect": "1",
+        }, follow_redirects=False)
+        assert resp.status_code == 303
+        assert f"/results?date={seed_data['target']}" in resp.headers["location"]
+
+    def test_index_has_eval_panel_controls(self, app):
+        resp = app.get("/")
+        assert 'name="only_missing"' in resp.text
+        assert "仅未测评" in resp.text
+        assert "全部重新评测" in resp.text
+        assert 'type="date"' in resp.text
+
+    def test_only_missing_passed_to_pipeline(self, app, db_session):
+        with patch("app.api.routes.run_today") as mock_run:
+            mock_run.return_value = {"success": 0, "failed": 0, "details": []}
+            app.post("/run-today", data={"date": "2026-08-21", "only_missing": "1"})
+            _, kwargs = mock_run.call_args
+            assert kwargs.get("only_missing") is True
 
 
 class TestPostStudentsImport:
@@ -499,6 +529,25 @@ class TestProjectDetail:
 
     def test_detail_nonexistent_returns_404(self, app):
         assert app.get("/projects/9999").status_code == 404
+
+    def test_detail_shows_score_trend_charts(self, app, db_session, seed_data):
+        from datetime import timedelta
+        t = seed_data['target']
+        for i, score in enumerate([60, 88]):
+            db_session.add(Assessment(
+                student_id=seed_data['s1'].id,
+                project_id=seed_data['p1'].id,
+                date=t + timedelta(days=i),
+                total_score=score,
+                comment="评语",
+                status="done",
+            ))
+        db_session.commit()
+        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        assert resp.status_code == 200
+        assert "平均分趋势" in resp.text
+        assert "分数变化" in resp.text
+        assert "<svg" in resp.text
 
     def test_detail_has_add_plan_form_bound_to_project(self, app, seed_data):
         resp = app.get(f"/projects/{seed_data['p1'].id}")
