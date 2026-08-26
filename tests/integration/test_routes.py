@@ -731,3 +731,55 @@ class TestPlanManagement:
     def test_delete_nonexistent_returns_404(self, app):
         resp = app.post("/plans/9999/delete")
         assert resp.status_code == 404
+
+
+class TestStudentsPageDisplay:
+
+    def test_shows_total_count(self, app, seed_data):
+        resp = app.get("/students")
+        assert resp.status_code == 200
+        assert "共 2 名学生" in resp.text
+
+    def test_table_has_index_column(self, app, seed_data):
+        resp = app.get("/students")
+        assert "<th>#</th>" in resp.text
+        assert "<td>1</td>" in resp.text
+        assert "<td>2</td>" in resp.text
+
+    def test_table_has_student_no_column(self, app, seed_data):
+        resp = app.get("/students")
+        assert "<th>学号</th>" in resp.text
+
+
+class TestDeleteDayAssessments:
+
+    def _seed_two_days(self, db_session, seed_data):
+        from datetime import timedelta
+        t = seed_data['target']
+        for i, sc in enumerate([70, 80]):
+            db_session.add(Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                                      date=t + timedelta(days=i), total_score=sc, status="done"))
+        db_session.commit()
+        return t
+
+    def test_deletes_only_target_date(self, app, db_session, seed_data):
+        from datetime import timedelta
+        t = self._seed_two_days(db_session, seed_data)
+        resp = app.post(f"/projects/{seed_data['p1'].id}/assessments/delete",
+                        data={"date": str(t)})
+        assert resp.status_code in (200, 302, 303)
+        db_session.expire_all()
+        left = db_session.exec(select(Assessment).where(
+            Assessment.project_id == seed_data['p1'].id)).all()
+        assert len(left) == 1
+        assert left[0].date == t + timedelta(days=1)
+
+    def test_detail_page_has_day_delete_button(self, app, db_session, seed_data):
+        t = self._seed_two_days(db_session, seed_data)
+        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        assert "/assessments/delete" in resp.text
+        assert f'value="{t}"' in resp.text
+
+    def test_nonexistent_project_returns_404(self, app):
+        assert app.post("/projects/9999/assessments/delete",
+                        data={"date": "2026-08-26"}).status_code == 404

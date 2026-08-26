@@ -609,6 +609,25 @@ def eval_progress(job_id: str, auth_check=Depends(require_auth)):
     return JSONResponse(job)
 
 
+@router.post("/projects/{project_id}/assessments/delete")
+def delete_day_assessments(
+    project_id: int,
+    auth_check=Depends(require_auth),
+    date: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    target_date = datetime.date.fromisoformat(date)
+    for a in session.exec(select(Assessment).where(
+        Assessment.project_id == project_id, Assessment.date == target_date
+    )).all():
+        session.delete(a)
+    session.commit()
+    return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
+
+
 @router.post("/api/login", response_class=JSONResponse)
 def login_endpoint_route(credentials=Depends(security)):
     return login_endpoint(credentials)
