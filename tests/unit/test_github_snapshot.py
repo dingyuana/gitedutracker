@@ -256,3 +256,46 @@ class TestRateLimitRetry:
         act = session.exec(select(GithubActivity)).first()
         assert act.status == "failed"
         assert len(mock_sleep.call_args_list) <= 1
+
+
+class TestReuseOkCache:
+
+    def test_ok_activity_not_refetched(self, session):
+        from unittest.mock import patch
+        from app.services import github_snapshot
+        from app.models import Student, GithubActivity
+        from datetime import date
+
+        s1 = Student(name='甲', email='cache@x.com', github_repo='c/r')
+        session.add(s1)
+        session.commit()
+        session.add(GithubActivity(student_id=s1.id, date=date(2026, 8, 21), status="ok", commits_count=3))
+        session.commit()
+
+        with patch.object(github_snapshot, "fetch_activity") as mock_fetch:
+            count = github_snapshot.sync_day(date(2026, 8, 21), session=session)
+
+        mock_fetch.assert_not_called()
+        assert count == 1
+
+    def test_failed_activity_is_refetched(self, session):
+        from unittest.mock import patch
+        from app.services import github_snapshot
+        from app.models import Student, GithubActivity
+        from datetime import date
+
+        s1 = Student(name='乙', email='refetch@x.com', github_repo='d/r')
+        session.add(s1)
+        session.commit()
+        session.add(GithubActivity(student_id=s1.id, date=date(2026, 8, 21), status="failed"))
+        session.commit()
+
+        with patch.object(github_snapshot, "fetch_activity", return_value={
+            "commits_count": 2, "commits": [], "prs_opened": 0,
+            "prs_merged": 0, "loc_additions": 10, "loc_deletions": 2,
+        }):
+            github_snapshot.sync_day(date(2026, 8, 21), session=session)
+
+        act = session.exec(select(GithubActivity)).first()
+        assert act.status == "ok"
+        assert act.commits_count == 2

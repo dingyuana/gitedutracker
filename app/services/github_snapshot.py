@@ -30,6 +30,15 @@ def sync_day(target_date: date, session: Session = None) -> int:
     for idx, student in enumerate(students):
         if idx > 0:
             time.sleep(SYNC_INTERVAL_SECONDS)
+        existing_activity = session.exec(
+            select(GithubActivity).where(
+                GithubActivity.student_id == student.id,
+                GithubActivity.date == target_date,
+            )
+        ).first()
+        if existing_activity is not None and existing_activity.status == "ok":
+            success_count += 1
+            continue
         try:
             activity_data = None
             for attempt in (1, 2):
