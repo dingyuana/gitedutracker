@@ -10,9 +10,13 @@
                 <input type="date" name="date" value="{{ date.strftime('%Y-%m-%d') if date else '' }}">
             </div>
             <button type="submit" class="btn btn-primary">查询</button>
-            <a href="/export?date={{ date.strftime('%Y-%m-%d') if date else '' }}&fmt=xlsx" class="btn btn-success">导出 xlsx</a>
         </div>
     </form>
+    {% if date %}
+    <div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem;">
+        <a href="/export?date={{ date.strftime('%Y-%m-%d') }}&fmt=xlsx" class="btn btn-success" download>导出 xlsx</a>
+    </div>
+    {% endif %}
 </div>
 {% if date %}
 <div class="card">

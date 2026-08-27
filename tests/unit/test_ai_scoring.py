@@ -556,6 +556,59 @@ class TestFieldValueTypeValidation:
             score_student(valid_context, settings)
 
 
+class TestCommentLanguageValidation:
+
+    def _call(self, mock_openai_cls, settings, valid_context, comment):
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({
+            "quality_score": 80,
+            "match_score": 80,
+            "completion": True,
+            "schedule_status": "ontime",
+            "comment": comment,
+            "reasoning": "评估依据",
+        })
+        mock_client.chat.completions.create.return_value = mock_response
+        return score_student(valid_context, settings)
+
+    @patch("app.services.ai_scoring_service.OpenAI")
+    def test_korean_comment_raises(self, mock_openai_cls, settings, valid_context):
+        # 韩文（谚文 Hangul）评语必须被拒绝
+        comment = "본날 계획을 성공적으로 완료했습니다. 코드 리뷰를 통해 네이밍 규칙을 정리하세요."
+        with pytest.raises(LLMInvalidResponse):
+            self._call(mock_openai_cls, settings, valid_context, comment)
+
+    @patch("app.services.ai_scoring_service.OpenAI")
+    def test_japanese_comment_raises(self, mock_openai_cls, settings, valid_context):
+        # 日文（假名 Kana）评语必须被拒绝
+        comment = "本日の計画を成功裏に完了しました。コードを確認してください。"
+        with pytest.raises(LLMInvalidResponse):
+            self._call(mock_openai_cls, settings, valid_context, comment)
+
+    @patch("app.services.ai_scoring_service.OpenAI")
+    def test_english_only_comment_raises(self, mock_openai_cls, settings, valid_context):
+        # 全英文评语必须被拒绝（要求中文）
+        comment = "You completed the task successfully. Please review your code."
+        with pytest.raises(LLMInvalidResponse):
+            self._call(mock_openai_cls, settings, valid_context, comment)
+
+    @patch("app.services.ai_scoring_service.OpenAI")
+    def test_chinese_comment_with_english_terms_accepted(self, mock_openai_cls, settings, valid_context):
+        # 中文评语含英文技术术语（STM32/USART 等）应通过
+        comment = "今日完成了STM32流水灯与USART串口通信，代码结构清晰，建议补充单元测试。"
+        result = self._call(mock_openai_cls, settings, valid_context, comment)
+        assert result["comment"] == comment
+
+    @patch("app.services.ai_scoring_service.OpenAI")
+    def test_pure_chinese_comment_accepted(self, mock_openai_cls, settings, valid_context):
+        comment = "今日任务完成良好，代码质量较高，继续保持。"
+        result = self._call(mock_openai_cls, settings, valid_context, comment)
+        assert result["comment"] == comment
+
+
 class TestDiffTruncation:
 
     @patch("app.services.ai_scoring_service.OpenAI")

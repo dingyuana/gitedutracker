@@ -27,6 +27,8 @@ REQUIRED_FIELDS = (
 SYSTEM_PROMPT = (
     "你是一个严格的代码评审导师。根据学生当天布置的任务、GitHub 活动以及提供的真实代码，"
     "评估质量、匹配度、完成情况，并生成四段式鼓励评语。\n"
+    "语言要求：评语和 reasoning 一律使用简体中文撰写，严禁使用韩文、日文、英文或其他外语，"
+    "仅允许在技术术语（如 STM32、USART、GPIO 等）中使用英文字母。\n"
     "评分依据优先级：\n"
     "1. 若提供「当日代码变更(code_diffs)」，必须逐段阅读真实 diff 评估代码质量："
     "结构设计、命名可读性、边界处理、是否含测试，严禁仅凭提交信息推断。\n"
@@ -105,6 +107,22 @@ def _build_user_message(context: dict[str, Any], truncated: bool = False) -> str
     return "\n".join(lines)
 
 
+def _is_chinese(text: str) -> bool:
+    """判断评语是否以简体中文为主。
+
+    统计汉字（CJK 统一表意文字）、谚文（韩文 Hangul）、假名（日文 Kana）的数量：
+    - 含韩文或日文 → 非中文
+    - 无汉字且非韩文/日文（如纯英文）→ 视为非中文
+    允许英文仅作为内嵌技术术语（如 STM32/USART）出现，不影响中文主体。
+    """
+    hanzi = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    hangul = sum(1 for ch in text if "\uac00" <= ch <= "\ud7a3")
+    kana = sum(1 for ch in text if "\u3040" <= ch <= "\u30ff")
+    if hangul > 0 or kana > 0:
+        return False
+    return hanzi > 0
+
+
 def _validate_response(data: dict) -> dict:
     for field in REQUIRED_FIELDS:
         if field not in data:
@@ -130,6 +148,8 @@ def _validate_response(data: dict) -> dict:
         raise LLMInvalidResponse(f"comment 类型错误: 期望 str，得到 {type(data['comment']).__name__}")
     if not data["comment"]:
         raise LLMInvalidResponse("comment 不能为空")
+    if not _is_chinese(data["comment"]):
+        raise LLMInvalidResponse("comment 非中文，请使用简体中文撰写评语")
 
     if not isinstance(data["reasoning"], str):
         raise LLMInvalidResponse(f"reasoning 类型错误: 期望 str，得到 {type(data['reasoning']).__name__}")
