@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — 评测记录{% endblock %}
+{% block content %}
+<h1>
+    <a href="/projects/{{ project.id }}" style="text-decoration:none;color:var(--text-muted)">←</a>
+    {{ project.name }} · 评测记录
+</h1>
+
+{% if assessments_by_date %}
+{% for a_date, items, plan_content in assessments_by_date %}
+<details class="card" {% if loop.first %}open{% endif %}>
+    <summary>{{ a_date }}（{{ items|length }} 人）{% if plan_content %} · {{ plan_content }}{% endif %}</summary>
+    <div class="card-body">
+        <form action="/projects/{{ project.id }}/assessments/delete" method="POST" style="display:inline;margin-bottom:0.5rem"
+              onsubmit="return confirm('确定删除 {{ a_date }} 的全部 {{ items|length }} 条评测记录？此操作不可恢复')">
+            <input type="hidden" name="date" value="{{ a_date }}">
+            <button type="submit" class="btn btn-small btn-danger">删除当日记录</button>
+        </form>
+        <table>
+            <thead><tr><th>学生</th><th>状态</th><th>总分</th><th>AI 评语</th></tr></thead>
+            <tbody>
+            {% for item in items %}
+            <tr{% if item.status == 'failed' %} style="opacity:0.6"{% endif %}>
+                <td>{{ item.student_name }}</td>
+                <td>{% if item.status == 'failed' %}<span style="color:#d93025">❌ 失败</span>{% else %}✅{% endif %}</td>
+                <td><strong>{{ item.total_score if item.total_score is not none else "—" }}</strong></td>
+                <td class="comment-cell">{{ item.comment or "—" }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</details>
+{% endfor %}
+{% else %}
+<div class="card">
+    <p class="empty">暂无评测记录。点击「评测」按钮开始</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -26,225 +26,70 @@
         <button type="submit" class="btn btn-small btn-success">完成</button>
     </form>
     {% endif %}
-    <button type="button" class="btn btn-primary eval-btn" data-project="{{ project.id }}" data-name="{{ project.name }}">评测</button>
+    <button type="button" class="btn btn-primary eval-btn">评测</button>
     <a href="/" class="btn btn-small">返回看板</a>
 </div>
 
 <div class="detail-grid">
-    <div class="summary-card card accent-blue" onclick="openModal('students-modal')">
+    <a href="/projects/{{ project.id }}/students" class="summary-card card accent-blue" style="text-decoration:none;color:inherit">
         <div class="card-accent"><span class="accent-icon">👥</span><h3>学生</h3><span class="accent-count">{{ students|length }} 人</span></div>
         <div class="card-summary">
             {% if students %}
             <div class="summary-tags">
-                {% for s in students %}
+                {% for s in students[:8] %}
                 <span class="summary-tag">{{ s.name }}</span>
                 {% endfor %}
+                {% if students|length > 8 %}<span class="summary-tag">+{{ students|length - 8 }}</span>{% endif %}
             </div>
-            {% else %}暂无学生，点击管理{% endif %}
+            {% else %}暂无学生，点击添加{% endif %}
         </div>
-    </div>
+        <div class="card-action"><span class="btn btn-small">管理 →</span></div>
+    </a>
 
-    <div class="summary-card card accent-orange" onclick="openModal('plans-modal')">
+    <a href="/projects/{{ project.id }}/plans" class="summary-card card accent-orange" style="text-decoration:none;color:inherit">
         <div class="card-accent"><span class="accent-icon">📅</span><h3>计划</h3><span class="accent-count">{{ plans|length }} 条</span></div>
         <div class="card-summary">
             {% if plans %}
             <div class="summary-tags">
-                {% for p in plans[:5] %}
-                <span class="summary-tag">{{ p.date }} {{ p.content[:15] }}{% if p.content|length > 15 %}…{% endif %}</span>
+                {% for p in plans[:3] %}
+                <span class="summary-tag">{{ p.date }} {{ p.content[:12] }}{% if p.content|length > 12 %}…{% endif %}</span>
                 {% endfor %}
-                {% if plans|length > 5 %}<span class="summary-tag">+{{ plans|length - 5 }} 条</span>{% endif %}
+                {% if plans|length > 3 %}<span class="summary-tag">+{{ plans|length - 3 }}</span>{% endif %}
             </div>
-            {% else %}暂无计划，点击管理{% endif %}
+            {% else %}暂无计划，点击添加{% endif %}
         </div>
-    </div>
+        <div class="card-action"><span class="btn btn-small">管理 →</span></div>
+    </a>
 
-    <div class="summary-card card accent-green" onclick="openModal('charts-modal')">
+    <a href="/projects/{{ project.id }}/charts" class="summary-card card accent-green" style="text-decoration:none;color:inherit">
         <div class="card-accent"><span class="accent-icon">📈</span><h3>分数趋势</h3><span class="accent-count">{% if student_charts %}{{ student_charts|length }} 人{% else %}暂无{% endif %}</span></div>
         <div class="card-summary">
-            {% if avg_chart %}已生成平均分与学生分数变化图表，点击查看{% else %}评测后将自动生成分数趋势图{% endif %}
+            {% if avg_chart %}已生成平均分与学生分数变化图表{% else %}评测后将自动生成趋势图{% endif %}
         </div>
-    </div>
+        <div class="card-action"><span class="btn btn-small">查看 →</span></div>
+    </a>
 
-    <div class="summary-card card accent-purple" onclick="openModal('assessments-modal')">
+    <a href="/projects/{{ project.id }}/assessments" class="summary-card card accent-purple" style="text-decoration:none;color:inherit">
         <div class="card-accent"><span class="accent-icon">📋</span><h3>评测记录</h3><span class="accent-count">{% if assessments_by_date %}{{ assessments_by_date|length }} 天{% else %}暂无{% endif %}</span></div>
         <div class="card-summary">
             {% if assessments_by_date %}
             <div class="summary-tags">
                 {% for a_date, items, plan_content in assessments_by_date[:3] %}
-                <span class="summary-tag">{{ a_date }}（{{ items|length }} 人）</span>
+                <span class="summary-tag">{{ a_date }}（{{ items|length }}人）</span>
                 {% endfor %}
-                {% if assessments_by_date|length > 3 %}<span class="summary-tag">+{{ assessments_by_date|length - 3 }} 天</span>{% endif %}
+                {% if assessments_by_date|length > 3 %}<span class="summary-tag">+{{ assessments_by_date|length - 3 }}</span>{% endif %}
             </div>
             {% else %}暂无评测记录，点击评测按钮开始{% endif %}
         </div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="students-modal" hidden>
-    <div class="modal modal-wide">
-        <div class="modal-header"><h3>👥 学生管理</h3><button class="modal-close" onclick="closeModal('students-modal')">&times;</button></div>
-        <div class="modal-body">
-            <div class="section-title">导入 xlsx</div>
-            <form action="/students/import" method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="project_id" value="{{ project.id }}">
-                <div class="form-row">
-                    <label style="margin:0;flex:2">选择文件<input type="file" name="file" accept=".xlsx,.xls" required style="width:100%;margin-top:0.25rem"></label>
-                    <div><button type="submit" class="btn btn-primary btn-small">导入</button></div>
-                </div>
-            </form>
-            <div class="form-divider"></div>
-            <div class="section-title">添加学生</div>
-            <form action="/students/add" method="POST">
-                <input type="hidden" name="project_id" value="{{ project.id }}">
-                <div class="form-row">
-                    <input type="text" name="name" placeholder="姓名" required>
-                    <input type="email" name="email" placeholder="邮箱">
-                    <input type="text" name="github_repo" placeholder="仓库 owner/repo">
-                    <div><button type="submit" class="btn btn-small">＋ 添加</button></div>
-                </div>
-            </form>
-            <div class="form-divider"></div>
-            {% if students %}
-            <div class="pagination-controls" data-target="stu-tbody" data-page-size="15"></div>
-            <table>
-                <thead><tr><th>姓名</th><th>邮箱</th><th>仓库</th><th>操作</th></tr></thead>
-                <tbody id="stu-tbody" class="paginated-tbody">
-                {% for s in students %}
-                <tr>
-                    <td>{{ s.name }}</td>
-                    <td>{{ s.email or "—" }}</td>
-                    <td><small>{{ s.github_repo }}</small></td>
-                    <td><form action="/students/{{ s.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('确定删除「{{ s.name }}」？')"><button type="submit" class="btn btn-small btn-danger">删除</button></form></td>
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p class="empty">暂无学生</p>
-            {% endif %}
-        </div>
-        <div class="modal-footer"><button class="btn" onclick="closeModal('students-modal')">关闭</button></div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="plans-modal" hidden>
-    <div class="modal modal-wide">
-        <div class="modal-header"><h3>📅 计划管理</h3><button class="modal-close" onclick="closeModal('plans-modal')">&times;</button></div>
-        <div class="modal-body">
-            <div class="section-title">添加计划</div>
-            <form action="/plans" method="POST">
-                <input type="hidden" name="project_id" value="{{ project.id }}">
-                <div class="form-row">
-                    <input type="date" name="date" value="{{ today }}" required>
-                    <input type="text" name="content" placeholder="当日工作计划/教程任务" required style="flex:2">
-                    <select name="student_id"><option value="">全体学生</option>{% for s in students %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select>
-                    <div><button type="submit" class="btn btn-primary btn-small">添加</button></div>
-                </div>
-            </form>
-            <div class="form-divider"></div>
-            {% if plans %}
-            <div class="pagination-controls" data-target="plan-tbody" data-page-size="15"></div>
-            <table>
-                <thead><tr><th>日期</th><th>内容</th><th>对象</th><th>操作</th></tr></thead>
-                <tbody id="plan-tbody" class="paginated-tbody">
-                {% for plan in plans %}
-                <tr>
-                    <td>{{ plan.date }}</td>
-                    <td>{{ plan.content }}</td>
-                    <td>{{ plan.student_id or "全体" }}</td>
-                    <td>
-                        <a href="/plans/{{ plan.id }}/edit" class="btn btn-small">编辑</a>
-                        <form action="/plans/{{ plan.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('删除该日程？')"><button type="submit" class="btn btn-small btn-danger">删除</button></form>
-                    </td>
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p class="empty">暂无计划</p>
-            {% endif %}
-        </div>
-        <div class="modal-footer"><button class="btn" onclick="closeModal('plans-modal')">关闭</button></div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="charts-modal" hidden>
-    <div class="modal modal-full">
-        <div class="modal-header"><h3>📈 分数趋势</h3><button class="modal-close" onclick="closeModal('charts-modal')">&times;</button></div>
-        <div class="modal-body">
-            {% if avg_chart %}
-            <div class="section-title">每日平均分</div>
-            {{ avg_chart | safe }}
-            {% endif %}
-            {% if student_charts %}
-            <div class="form-divider"></div>
-            <div class="section-title">学生分数变化</div>
-            <div class="pagination-controls" data-target="chart-grid" data-page-size="6"></div>
-            <div class="chart-grid paginated-grid" id="chart-grid">
-                {% for sc in student_charts %}
-                <div class="chart-item">
-                    {{ sc.chart | safe }}
-                    <div class="chart-meta">已评 {{ sc.count }} 天</div>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-            {% if not avg_chart and not student_charts %}
-            <p class="empty">评测后将自动生成分数趋势图</p>
-            {% endif %}
-        </div>
-        <div class="modal-footer"><button class="btn" onclick="closeModal('charts-modal')">关闭</button></div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="assessments-modal" hidden>
-    <div class="modal modal-full">
-        <div class="modal-header"><h3>📋 评测记录</h3><button class="modal-close" onclick="closeModal('assessments-modal')">&times;</button></div>
-        <div class="modal-body">
-            {% if assessments_by_date %}
-            <div class="pagination-controls" data-target="assess-container" data-page-size="5"></div>
-            <div id="assess-container" class="paginated-block">
-            {% for a_date, items, plan_content in assessments_by_date %}
-            <div class="assess-date-block">
-                <details style="margin-bottom:0.75rem;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.75rem" {% if loop.first %}open{% endif %}>
-                    <summary style="cursor:pointer;font-weight:600;font-size:0.95rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
-                        <span style="transition:transform 0.15s;display:inline-block">▸</span>
-                        {{ a_date }}（{{ items|length }} 人）{% if plan_content %} · {{ plan_content }}{% endif %}
-                    </summary>
-                    <form action="/projects/{{ project.id }}/assessments/delete" method="POST" style="margin:0.5rem 0" onsubmit="return confirm('确定删除 {{ a_date }} 的全部 {{ items|length }} 条评测记录？')">
-                        <input type="hidden" name="date" value="{{ a_date }}">
-                        <button type="submit" class="btn btn-small btn-danger">删除当日记录</button>
-                    </form>
-                    <table>
-                        <thead><tr><th>学生</th><th>状态</th><th>总分</th><th>AI 评语</th></tr></thead>
-                        <tbody>
-                        {% for item in items %}
-                        <tr{% if item.status == 'failed' %} style="opacity:0.6"{% endif %}>
-                            <td>{{ item.student_name }}</td>
-                            <td>{% if item.status == 'failed' %}<span style="color:#d93025">❌ 失败</span>{% else %}✅{% endif %}</td>
-                            <td><strong>{{ item.total_score if item.total_score is not none else "—" }}</strong></td>
-                            <td class="comment-cell">{{ item.comment or "—" }}</td>
-                        </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </details>
-            </div>
-            {% endfor %}
-            </div>
-            {% else %}
-            <p class="empty">暂无评测记录，点击「评测」按钮开始</p>
-            {% endif %}
-        </div>
-        <div class="modal-footer"><button class="btn" onclick="closeModal('assessments-modal')">关闭</button></div>
-    </div>
+        <div class="card-action"><span class="btn btn-small">查看 →</span></div>
+    </a>
 </div>
 
 <div class="modal-overlay" id="eval-modal" hidden>
     <div class="modal">
         <div class="modal-header">
-            <h3>评测项目：<span id="eval-modal-name"></span></h3>
-            <button class="modal-close" onclick="closeModal('eval-modal')">&times;</button>
+            <h3>评测项目：{{ project.name }}</h3>
+            <button class="modal-close" onclick="document.getElementById('eval-modal').hidden=true">&times;</button>
         </div>
         <div class="modal-body">
             <label>评测日期 <input type="date" id="eval-date-input" value="{{ today }}"></label>
@@ -266,7 +111,7 @@
             <label>抽样人数（留空=全部） <input type="number" id="eval-sample-input" min="1" placeholder="不限"></label>
         </div>
         <div class="modal-footer">
-            <button class="btn" onclick="closeModal('eval-modal')">取消</button>
+            <button class="btn" onclick="document.getElementById('eval-modal').hidden=true">取消</button>
             <button class="btn btn-primary" id="eval-start-btn">开始评测</button>
         </div>
     </div>
@@ -274,78 +119,15 @@
 
 <script>
 (function () {
-    var activePid = {{ project.id }};
+    var pid = {{ project.id }};
+    var evalModal = document.getElementById("eval-modal");
 
-    window.openModal = function (id) {
-        document.getElementById(id).hidden = false;
-        document.querySelectorAll('.pagination-controls').forEach(initPagination);
-    };
-    window.closeModal = function (id) { document.getElementById(id).hidden = true; };
-
-    document.querySelectorAll(".modal-overlay").forEach(function (ov) {
-        ov.addEventListener("click", function (e) { if (e.target === ov) ov.hidden = true; });
-    });
-
-    document.querySelectorAll("details summary").forEach(function (sum) {
-        sum.addEventListener("click", function () {
-            var arrow = sum.querySelector("span");
-            if (arrow) arrow.style.transform = sum.parentElement.open ? "rotate(0)" : "rotate(90deg)";
-        });
-    });
-
-    var paginated = new WeakMap();
-
-    function initPagination(ctrl) {
-        if (paginated.has(ctrl)) return;
-        var targetId = ctrl.getAttribute("data-target");
-        var pageSize = parseInt(ctrl.getAttribute("data-page-size")) || 15;
-        var container = document.getElementById(targetId);
-        if (!container) return;
-
-        var items = [];
-        if (container.classList.contains("paginated-tbody")) {
-            items = Array.from(container.querySelectorAll("tr"));
-        } else if (container.classList.contains("paginated-grid")) {
-            items = Array.from(container.children);
-        } else if (container.classList.contains("paginated-block")) {
-            items = Array.from(container.querySelectorAll(".assess-date-block"));
-        }
-        if (items.length <= pageSize) { ctrl.innerHTML = ''; return; }
-
-        var state = { page: 1, total: Math.ceil(items.length / pageSize) };
-        paginated.set(ctrl, state);
-
-        function render() {
-            var start = (state.page - 1) * pageSize;
-            items.forEach(function (el, i) { el.style.display = (i >= start && i < start + pageSize) ? '' : 'none'; });
-            var html = '';
-            html += '<button ' + (state.page <= 1 ? 'disabled' : '') + ' data-p="-1">‹</button>';
-            for (var p = 1; p <= state.total; p++) {
-                html += '<button class="' + (p === state.page ? 'active' : '') + '" data-p="' + p + '">' + p + '</button>';
-            }
-            html += '<button ' + (state.page >= state.total ? 'disabled' : '') + ' data-p="+1">›</button>';
-            html += '<span class="pagination-info">' + items.length + ' 项，第 ' + state.page + '/' + state.total + ' 页</span>';
-            ctrl.innerHTML = html;
-            ctrl.querySelectorAll('button').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    var d = btn.getAttribute('data-p');
-                    if (d === '-1') state.page = Math.max(1, state.page - 1);
-                    else if (d === '+1') state.page = Math.min(state.total, state.page + 1);
-                    else state.page = parseInt(d);
-                    render();
-                });
-            });
-        }
-        render();
-    }
-
-    document.querySelectorAll('.pagination-controls').forEach(initPagination);
+    evalModal.addEventListener("click", function (e) { if (e.target === evalModal) evalModal.hidden = true; });
 
     document.querySelector(".eval-btn").addEventListener("click", function () {
-        document.getElementById("eval-modal-name").textContent = "{{ project.name }}";
         var sel = document.getElementById("eval-plan-input");
         sel.innerHTML = '<option value="">全部计划（不限）</option>';
-        fetch("/projects/" + activePid + "/plans").then(function (r) { return r.json(); }).then(function (plans) {
+        fetch("/projects/" + pid + "/plans", {headers: {"Accept": "application/json"}}).then(function (r) { return r.json(); }).then(function (plans) {
             plans.forEach(function (pl) {
                 var opt = document.createElement("option");
                 opt.value = pl.id;
@@ -353,7 +135,7 @@
                 sel.appendChild(opt);
             });
         }).catch(function () {});
-        document.getElementById("eval-modal").hidden = false;
+        evalModal.hidden = false;
     });
 
     document.getElementById("eval-start-btn").addEventListener("click", function () {
@@ -365,14 +147,14 @@
         if (sample) body.append("sample_size", sample);
         var planVal = document.getElementById("eval-plan-input").value;
         if (planVal) body.append("plan_id", planVal);
-        closeModal("eval-modal");
-        fetch("/projects/" + activePid + "/run-eval", {
+        evalModal.hidden = true;
+        fetch("/projects/" + pid + "/run-eval", {
             method: "POST", body: body, headers: {"Content-Type": "application/x-www-form-urlencoded"}
         }).then(function (r) { return r.json(); }).then(function (d) {
             if (!d.job_id) { alert("评测启动失败"); return; }
             var timer = setInterval(function () {
                 fetch("/eval-progress/" + d.job_id).then(function (r) { return r.json(); }).then(function (p) {
-                    if (p.status === "done") { clearInterval(timer); window.location.href = "/projects/" + activePid; }
+                    if (p.status === "done") { clearInterval(timer); window.location.href = "/projects/" + pid; }
                     else if (p.status === "error") { clearInterval(timer); alert("评测出错，请重试"); }
                 });
             }, 3000);

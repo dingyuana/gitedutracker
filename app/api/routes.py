@@ -289,6 +289,133 @@ def project_detail_page(
     })
 
 
+def _load_project_ctx(session, project_id):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    students = session.exec(select(Student).where(Student.project_id == project_id)).all()
+    return project, students
+
+
+def _load_charts(session, project_id):
+    from app.utils.svg_chart import build_line_chart
+    assessments = session.exec(
+        select(Assessment).where(Assessment.project_id == project_id)
+    ).all()
+    done_sorted = sorted(
+        (a for a in assessments if a.status == "done" and a.total_score is not None),
+        key=lambda a: a.date,
+    )
+    score_by_date: dict = {}
+    per_student: dict = {}
+    for a in done_sorted:
+        score_by_date.setdefault(a.date, []).append(a.total_score)
+        per_student.setdefault(a.student_id, []).append(a)
+    avg_series = [
+        (d.strftime("%m-%d"), round(sum(vs) / len(vs), 1))
+        for d, vs in sorted(score_by_date.items())
+    ]
+    avg_chart = build_line_chart(avg_series, title="项目每日平均分", color="#1a73e8")
+    student_charts = []
+    for sid, alist in sorted(per_student.items(), key=lambda kv: kv[1][0].date):
+        st = session.get(Student, sid)
+        sname = st.name if st else f"#{sid}"
+        series = [(a.date.strftime("%m-%d"), a.total_score) for a in alist]
+        student_charts.append({
+            "name": sname, "count": len(series),
+            "chart": build_line_chart(series, title=f"{sname} · 分数变化", color="#34a853"),
+        })
+    return avg_chart, student_charts
+
+
+def _load_assessments(session, project_id):
+    plans = session.exec(select(DailyPlan).where(DailyPlan.project_id == project_id)).all()
+    date_plan_map = {p.date: p.content for p in plans}
+    assessments = session.exec(
+        select(Assessment).where(Assessment.project_id == project_id)
+    ).all()
+    by_date: dict = {}
+    for a in assessments:
+        if a.status not in ("done", "failed"):
+            continue
+        student = session.get(Student, a.student_id)
+        by_date.setdefault(a.date, []).append({
+            "student_name": student.name if student else f"#{a.student_id}",
+            "total_score": a.total_score,
+            "comment": a.comment,
+            "status": a.status,
+        })
+    return [
+        (d, items, date_plan_map.get(d, ""))
+        for d, items in sorted(by_date.items(), key=lambda kv: kv[0], reverse=True)
+    ]
+
+
+@router.get("/projects/{project_id}/students", response_class=HTMLResponse)
+def project_students_page(
+    request: Request, project_id: int,
+    auth_check=Depends(require_auth), session: Session = Depends(get_session),
+):
+    project, students = _load_project_ctx(session, project_id)
+    return request.app.state.templates.TemplateResponse(request, "project_students.html", {
+        "project": project, "students": students,
+    })
+
+
+@router.get("/projects/{project_id}/plans", response_class=HTMLResponse)
+def project_plans_page(
+    request: Request, project_id: int,
+    auth_check=Depends(require_auth), session: Session = Depends(get_session),
+):
+    from datetime import date as _today
+    project, students = _load_project_ctx(session, project_id)
+    plans = sorted(
+        session.exec(select(DailyPlan).where(DailyPlan.project_id == project_id)).all(),
+        key=lambda p: p.date, reverse=True,
+    )
+    if "application/json" in request.headers.get("accept", ""):
+        filtered = plans
+        date_str = request.query_params.get("date")
+        if date_str:
+            try:
+                filter_date = _date.fromisoformat(date_str)
+                filtered = [p for p in plans if p.date == filter_date]
+            except ValueError:
+                pass
+        return JSONResponse([
+            {"id": p.id, "date": str(p.date), "content": p.content}
+            for p in filtered
+        ])
+    return request.app.state.templates.TemplateResponse(request, "project_plans.html", {
+        "project": project, "students": students, "plans": plans,
+        "today": _today.today(),
+    })
+
+
+@router.get("/projects/{project_id}/charts", response_class=HTMLResponse)
+def project_charts_page(
+    request: Request, project_id: int,
+    auth_check=Depends(require_auth), session: Session = Depends(get_session),
+):
+    project, _ = _load_project_ctx(session, project_id)
+    avg_chart, student_charts = _load_charts(session, project_id)
+    return request.app.state.templates.TemplateResponse(request, "project_charts.html", {
+        "project": project, "avg_chart": avg_chart, "student_charts": student_charts,
+    })
+
+
+@router.get("/projects/{project_id}/assessments", response_class=HTMLResponse)
+def project_assessments_page(
+    request: Request, project_id: int,
+    auth_check=Depends(require_auth), session: Session = Depends(get_session),
+):
+    project, _ = _load_project_ctx(session, project_id)
+    assessments_by_date = _load_assessments(session, project_id)
+    return request.app.state.templates.TemplateResponse(request, "project_assessments.html", {
+        "project": project, "assessments_by_date": assessments_by_date,
+    })
+
+
 @router.post("/projects/{project_id}/complete", response_class=HTMLResponse)
 def complete_project(
     request: Request,

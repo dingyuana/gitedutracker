@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — 计划管理{% endblock %}
+{% block content %}
+<h1>
+    <a href="/projects/{{ project.id }}" style="text-decoration:none;color:var(--text-muted)">←</a>
+    {{ project.name }} · 计划管理
+</h1>
+
+<div class="card">
+    <h3>添加计划</h3>
+    <form action="/plans" method="POST">
+        <input type="hidden" name="project_id" value="{{ project.id }}">
+        <div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
+            <input type="date" name="date" value="{{ today }}" required>
+            <input type="text" name="content" placeholder="当日工作计划/教程任务" required style="flex:1;min-width:200px">
+            <select name="student_id">
+                <option value="">全体学生</option>
+                {% for s in students %}
+                <option value="{{ s.id }}">{{ s.name }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary btn-small">添加</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h3>计划列表（{{ plans|length }} 条）</h3>
+    {% if plans %}
+    <table>
+        <thead><tr><th>日期</th><th>内容</th><th>对象</th><th>操作</th></tr></thead>
+        <tbody>
+        {% for plan in plans %}
+        <tr>
+            <td>{{ plan.date }}</td>
+            <td>{{ plan.content }}</td>
+            <td>{{ plan.student_id or "全体" }}</td>
+            <td>
+                <a href="/plans/{{ plan.id }}/edit" class="btn btn-small">编辑</a>
+                <form action="/plans/{{ plan.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('删除该日程？')">
+                    <button type="submit" class="btn btn-small btn-danger">删除</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty">暂无计划</p>
+    {% endif %}
+</div>
+{% endblock %}

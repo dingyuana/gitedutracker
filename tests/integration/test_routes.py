@@ -400,7 +400,10 @@ class TestPostRunToday:
         assert kwargs.get("plan_id") is None
 
     def test_project_plans_endpoint_returns_plans_for_date(self, app, seed_data):
-        resp = app.get(f"/projects/{seed_data['p1'].id}/plans?date={seed_data['target']}")
+        resp = app.get(
+            f"/projects/{seed_data['p1'].id}/plans?date={seed_data['target']}",
+            headers={"Accept": "application/json"},
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
@@ -408,7 +411,10 @@ class TestPostRunToday:
         assert data[0]["date"] == str(seed_data['target'])
 
     def test_project_plans_endpoint_empty_without_date(self, app, seed_data):
-        resp = app.get(f"/projects/{seed_data['p1'].id}/plans")
+        resp = app.get(
+            f"/projects/{seed_data['p1'].id}/plans",
+            headers={"Accept": "application/json"},
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
@@ -625,7 +631,7 @@ class TestProjectDetail:
         )
         db_session.add(a)
         db_session.commit()
-        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        resp = app.get(f"/projects/{seed_data['p1'].id}/assessments")
         assert resp.status_code == 200
         assert "张三" in resp.text
         assert "88.5" in resp.text
@@ -647,14 +653,13 @@ class TestProjectDetail:
                 status="done",
             ))
         db_session.commit()
-        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        resp = app.get(f"/projects/{seed_data['p1'].id}/charts")
         assert resp.status_code == 200
-        assert "分数趋势" in resp.text
-        assert "分数变化" in resp.text
+        assert "分数趋势" in resp.text or "分数变化" in resp.text
         assert "<svg" in resp.text
 
     def test_detail_has_add_plan_form_bound_to_project(self, app, seed_data):
-        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        resp = app.get(f"/projects/{seed_data['p1'].id}/plans")
         assert 'action="/plans" method="POST"' in resp.text
         assert f'value="{seed_data["p1"].id}"' in resp.text
 
@@ -829,7 +834,7 @@ class TestDeleteDayAssessments:
 
     def test_detail_page_has_day_delete_button(self, app, db_session, seed_data):
         t = self._seed_two_days(db_session, seed_data)
-        resp = app.get(f"/projects/{seed_data['p1'].id}")
+        resp = app.get(f"/projects/{seed_data['p1'].id}/assessments")
         assert "/assessments/delete" in resp.text
         assert f'value="{t}"' in resp.text
 

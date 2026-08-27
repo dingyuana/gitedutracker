@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — 分数趋势{% endblock %}
+{% block content %}
+<h1>
+    <a href="/projects/{{ project.id }}" style="text-decoration:none;color:var(--text-muted)">←</a>
+    {{ project.name }} · 分数趋势
+</h1>
+
+{% if avg_chart %}
+<div class="card">
+    <h3>每日平均分</h3>
+    {{ avg_chart | safe }}
+</div>
+{% endif %}
+
+{% if student_charts %}
+<div class="card">
+    <h3>学生分数变化（{{ student_charts|length }} 人）</h3>
+    <div class="chart-grid">
+        {% for sc in student_charts %}
+        <div class="chart-item">
+            {{ sc.chart | safe }}
+            <div class="chart-meta">已评 {{ sc.count }} 天</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not avg_chart and not student_charts %}
+<div class="card">
+    <p class="empty">评测后将自动生成分数趋势图</p>
+</div>
+{% endif %}
+{% endblock %}
