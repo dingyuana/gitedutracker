@@ -105,19 +105,16 @@
 </details>
 {% endif %}
 
-<details class="card" {% if assessments_by_date %}open{% endif %}>
-    <summary>评测记录（分数与评语）</summary>
+{% if assessments_by_date %}
+{% for a_date, items, plan_content in assessments_by_date %}
+<details class="card">
+    <summary>📅 {{ a_date }}（{{ items|length }} 人）{% if plan_content %} · {{ plan_content }}{% endif %}</summary>
     <div class="card-body">
-    {% if assessments_by_date %}
-        {% for a_date, items in assessments_by_date %}
-        <h4>
-            📅 {{ a_date }} <small style="color:#888">({{ items|length }} 条)</small>
-            <form action="/projects/{{ project.id }}/assessments/delete" method="POST" style="display:inline;margin-left:0.5rem"
-                  onsubmit="return confirm('确定删除 {{ a_date }} 的全部 {{ items|length }} 条评测记录？此操作不可恢复')">
-                <input type="hidden" name="date" value="{{ a_date }}">
-                <button type="submit" class="btn btn-small btn-danger">删除当日记录</button>
-            </form>
-        </h4>
+        <form action="/projects/{{ project.id }}/assessments/delete" method="POST" style="display:inline;margin-bottom:0.5rem"
+              onsubmit="return confirm('确定删除 {{ a_date }} 的全部 {{ items|length }} 条评测记录？此操作不可恢复')">
+            <input type="hidden" name="date" value="{{ a_date }}">
+            <button type="submit" class="btn btn-small btn-danger">删除当日记录</button>
+        </form>
         <table>
             <thead><tr><th>学生</th><th>总分</th><th>AI 评语</th></tr></thead>
             <tbody>
@@ -130,10 +127,12 @@
             {% endfor %}
             </tbody>
         </table>
-        {% endfor %}
-    {% else %}
-    <p class="empty">暂无评测记录。运行「今日评测」后，每天的分数与评语会保存在这里供查询</p>
-    {% endif %}
     </div>
 </details>
+{% endfor %}
+{% else %}
+<div class="card">
+    <p class="empty">暂无评测记录。运行「今日评测」后，每天的分数与评语会保存在这里供查询</p>
+</div>
+{% endif %}
 {% endblock %}

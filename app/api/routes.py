@@ -192,7 +192,11 @@ def project_detail_page(
             "total_score": a.total_score,
             "comment": a.comment,
         })
-    assessments_by_date = sorted(by_date.items(), key=lambda kv: kv[0], reverse=True)
+    date_plan_map = {p.date: p.content for p in plans}
+    assessments_by_date = [
+        (d, items, date_plan_map.get(d, ""))
+        for d, items in sorted(by_date.items(), key=lambda kv: kv[0], reverse=True)
+    ]
 
     from app.utils.svg_chart import build_line_chart
 
