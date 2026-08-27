@@ -180,16 +180,16 @@
     var activePid = null;
     var activeBtn = null;
     var activeBox = null;
-    function loadPlans(pid, date) {
+    function loadPlans(pid) {
         var sel = document.getElementById("eval-plan-input");
-        sel.innerHTML = '<option value="">全部计划</option>';
-        fetch("/projects/" + pid + "/plans?date=" + date)
+        sel.innerHTML = '<option value="">全部计划（不限）</option>';
+        fetch("/projects/" + pid + "/plans")
             .then(function (r) { return r.json(); })
             .then(function (plans) {
                 plans.forEach(function (pl) {
                     var opt = document.createElement("option");
                     opt.value = pl.id;
-                    opt.textContent = (pl.date) + " · " + pl.content;
+                    opt.textContent = pl.date + " · " + pl.content;
                     sel.appendChild(opt);
                 });
             })
@@ -199,7 +199,7 @@
         document.getElementById("eval-modal-name").textContent = name;
         document.getElementById("eval-date-input").value = "{{ today }}";
         activePid = pid; activeBtn = btn; activeBox = box;
-        loadPlans(pid, document.getElementById("eval-date-input").value);
+        loadPlans(pid);
         document.getElementById("new-plan-content").value = "";
         if (evalModal) evalModal.hidden = false;
     }
@@ -207,9 +207,6 @@
     if (evalModal) {
         document.getElementById("eval-modal-close").addEventListener("click", closeEvalModal);
         document.getElementById("eval-modal-cancel").addEventListener("click", closeEvalModal);
-        document.getElementById("eval-date-input").addEventListener("change", function () {
-            if (activePid) loadPlans(activePid, this.value);
-        });
         document.getElementById("new-plan-btn").addEventListener("click", function () {
             var content = document.getElementById("new-plan-content").value.trim();
             var date = document.getElementById("eval-date-input").value;
@@ -223,7 +220,7 @@
                 .then(function (r) {
                     if (r.ok) {
                         document.getElementById("new-plan-content").value = "";
-                        loadPlans(activePid, date);
+                        loadPlans(activePid);
                     }
                 });
         });
