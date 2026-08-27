@@ -58,7 +58,16 @@
         <tr>
             <td>{{ s.name }}</td>
             <td>{{ s.email or "—" }}</td>
-            <td><small>{{ s.github_repo }}</small></td>
+            <td>
+                {% if s.github_url %}
+                <a href="{{ s.github_url }}" target="_blank" style="text-decoration:none">
+                    {% if 'gitee.com' in s.github_url %}<span class="badge" style="background:#c71d23;color:#fff">Gitee</span>{% else %}<span class="badge" style="background:#24292f;color:#fff">GitHub</span>{% endif %}
+                    <small>{{ s.github_url }}</small>
+                </a>
+                {% else %}
+                <small>{{ s.github_repo }}</small>
+                {% endif %}
+            </td>
             <td>
                 <form action="/students/{{ s.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('确定删除「{{ s.name }}」？')">
                     <button type="submit" class="btn btn-small btn-danger">删除</button>

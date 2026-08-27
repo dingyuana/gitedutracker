@@ -21,7 +21,7 @@ def _is_rate_limit_error(e: Exception) -> bool:
 
 def _fetch_via_mirror(student, target_date: date) -> dict | None:
     try:
-        local = _mirror_extract(student.github_repo, target_date)
+        local = _mirror_extract(student.github_url or student.github_repo, target_date)
     except Exception:
         return None
     return {
@@ -62,7 +62,7 @@ def sync_day(target_date: date, session: Session = None, students: list = None) 
                 for attempt in (1, 2):
                     try:
                         activity_data = fetch_activity_for_repo(
-                            repo=student.github_repo,
+                            repo=student.github_url or student.github_repo,
                             target_date=target_date,
                         )
                         break

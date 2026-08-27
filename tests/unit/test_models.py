@@ -42,6 +42,24 @@ class TestStudent:
         s = Student.model_validate({'name': '王五', 'email': 'wangwu@example.com', 'github_repo': 'https://github.com/wangwu/hello-world'})
         assert s.github_repo == 'wangwu/hello-world'
 
+    def test_github_url_saved_for_github_url(self):
+        s = Student.model_validate({'name': '王五', 'email': 'wangwu@example.com', 'github_repo': 'https://github.com/wangwu/hello-world'})
+        assert s.github_url == 'https://github.com/wangwu/hello-world'
+
+    def test_github_url_saved_for_gitee_url(self):
+        s = Student.model_validate({'name': '钱七', 'email': 'qianqi@example.com', 'github_repo': 'https://gitee.com/qianqi/my-car'})
+        assert s.github_repo == 'qianqi/my-car'
+        assert s.github_url == 'https://gitee.com/qianqi/my-car'
+
+    def test_github_url_none_for_owner_repo(self):
+        s = Student.model_validate({'name': '赵六', 'email': 'zhaoliu@example.com', 'github_repo': 'zhaoliu/project-x'})
+        assert s.github_url is None
+
+    def test_github_repo_url_normalization_with_git_suffix(self):
+        s = Student.model_validate({'name': '孙八', 'email': 'sunba@example.com', 'github_repo': 'https://gitee.com/sunba/car-project.git'})
+        assert s.github_repo == 'sunba/car-project'
+        assert s.github_url.endswith('car-project.git')
+
     def test_github_repo_owner_repo_format(self):
         s = Student.model_validate({'name': '赵六', 'email': 'zhaoliu@example.com', 'github_repo': 'zhaoliu/project-x'})
         assert s.github_repo == 'zhaoliu/project-x'

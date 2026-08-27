@@ -86,11 +86,14 @@ def import_students(filepath: str, session: Session = None, project_id: int = No
         if pd.isna(repo) or str(repo).strip() == '':
             skip_log.append(f"第 {row_num} 行（{str(name).strip()}）：缺少github仓库，跳过")
             continue
+        repo_raw = str(repo).strip()
         student_data = {
             'name': str(name).strip(),
             'email': str(email).strip(),
-            'github_repo': _normalize_repo(str(repo).strip()),
+            'github_repo': _normalize_repo(repo_raw),
         }
+        if repo_raw.startswith('http'):
+            student_data['github_url'] = repo_raw
         if 'student_no' in df.columns and not pd.isna(row.get('student_no')):
             student_data['student_no'] = str(row['student_no']).strip()
         if project_id is not None:

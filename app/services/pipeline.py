@@ -15,6 +15,11 @@ from app.services.settings_service import get_effective_settings
 from app.services.mirror_service import extract_day_activity, extract_snapshot
 
 
+def _student_repo(student) -> str:
+    """优先返回完整仓库 URL（含 github/gitee 平台信息），缺失时退回 owner/repo。"""
+    return student.github_url or student.github_repo
+
+
 def run_today(
     target_date: date,
     session: Optional[Session] = None,
@@ -197,10 +202,10 @@ def run_today(
 
         try:
             if eval_mode == "full":
-                snap = extract_snapshot(student.github_repo)
+                snap = extract_snapshot(_student_repo(student))
                 context["project_files"] = snap.get("files", [])
             else:
-                local = extract_day_activity(student.github_repo, target_date)
+                local = extract_day_activity(_student_repo(student), target_date)
                 context["code_diffs"] = local.get("code_diffs", [])
         except Exception as e:
             import logging

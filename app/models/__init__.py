@@ -21,6 +21,8 @@ class StudentBase(SQLModel):
         if v is None:
             return v
         v = str(v).strip()
+        if v.endswith('.git'):
+            v = v[:-4]
         if v.startswith('http'):
             parts = v.rstrip('/').split('/')
             return parts[-2] + '/' + parts[-1]

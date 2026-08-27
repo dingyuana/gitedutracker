@@ -35,7 +35,16 @@
                 <td>{{ s.student_no or "—" }}</td>
                 <td>{{ s.name }}</td>
                 <td>{{ s.email }}</td>
-                <td>{{ s.github_repo }}</td>
+                <td>
+                    {% if s.github_url %}
+                    <a href="{{ s.github_url }}" target="_blank" style="text-decoration:none">
+                        {% if 'gitee.com' in s.github_url %}<span class="badge" style="background:#c71d23;color:#fff">Gitee</span>{% else %}<span class="badge" style="background:#24292f;color:#fff">GitHub</span>{% endif %}
+                        <small>{{ s.github_url }}</small>
+                    </a>
+                    {% else %}
+                    {{ s.github_repo }}
+                    {% endif %}
+                </td>
                 <td>{{ project_map.get(s.project_id, "—") }}</td>
             </tr>
             {% endfor %}
