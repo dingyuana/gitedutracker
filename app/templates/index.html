@@ -4,27 +4,7 @@
 <h1>项目看板 <small style="font-size:0.9rem;color:#888">{{ today }}</small></h1>
 
 <div class="card">
-    <div class="inline-form">
-        <label>评审模式
-            <select name="eval_mode" id="eval-mode">
-                <option value="diff">当日变更评审（快）</option>
-                <option value="full">全项目代码审核（深入）</option>
-            </select>
-        </label>
-        <label>范围
-            <select name="eval_scope" id="eval-scope">
-                <option value="1">仅未测评</option>
-                <option value="0">全部重新评测</option>
-            </select>
-        </label>
-        <label>抽样人数
-            <input type="number" name="sample_size" id="eval-sample" min="1" max="200" value="" placeholder="留空=全部">
-        </label>
-    </div>
-    <p style="color:#5f6368;font-size:0.82rem;margin:0.5rem 0 0">
-        在下方各项目卡片点击「评测」即按该卡片内所选日期与以上配置运行该项目的评分。
-    </p>
-    <button type="button" class="btn btn-primary" id="new-project-btn" style="margin-top:0.75rem">＋ 新建项目</button>
+    <button type="button" class="btn btn-primary" id="new-project-btn">＋ 新建项目</button>
 </div>
 
 <!-- 新建项目弹窗 -->
@@ -85,10 +65,27 @@
                 <span style="color:#888">未评测</span>
             {% endif %}
         </div>
-        <div class="card-actions">
-            <label class="eval-date-label">评测日期
+        <div class="card-eval-config">
+            <label class="eval-field">评测日期
                 <input type="date" class="card-eval-date" value="{{ today }}">
             </label>
+            <label class="eval-field">评审模式
+                <select class="card-eval-mode">
+                    <option value="diff">当日变更评审（快）</option>
+                    <option value="full">全项目代码审核（深入）</option>
+                </select>
+            </label>
+            <label class="eval-field">范围
+                <select class="card-eval-scope">
+                    <option value="1">仅未测评</option>
+                    <option value="0">全部重新评测</option>
+                </select>
+            </label>
+            <label class="eval-field">抽样人数
+                <input type="number" class="card-eval-sample" min="1" max="200" value="" placeholder="留空=全部">
+            </label>
+        </div>
+        <div class="card-actions">
             <button type="button" class="btn btn-small btn-success eval-btn"
                     data-project="{{ c.project.id }}"
                     data-name="{{ c.project.name }}">评测</button>
@@ -160,6 +157,9 @@
             var pid = btn.dataset.project;
             var box = document.getElementById("progress-" + pid);
             var dateInput = card.querySelector(".card-eval-date");
+            var modeInput = card.querySelector(".card-eval-mode");
+            var scopeInput = card.querySelector(".card-eval-scope");
+            var sampleInput = card.querySelector(".card-eval-sample");
             var textEl = box.querySelector(".eval-progress-text");
             var bar = box.querySelector(".progress-bar");
             box.hidden = false;
@@ -168,9 +168,9 @@
 
             var fd = new FormData();
             fd.append("date", dateInput ? dateInput.value : "");
-            fd.append("eval_mode", document.getElementById("eval-mode").value);
-            fd.append("only_missing", document.getElementById("eval-scope").value);
-            const ss = document.getElementById("eval-sample").value.trim();
+            fd.append("eval_mode", modeInput ? modeInput.value : "diff");
+            fd.append("only_missing", scopeInput ? scopeInput.value : "0");
+            const ss = sampleInput ? sampleInput.value.trim() : "";
             if (ss) fd.append("sample_size", ss);
 
             fetch("/projects/" + pid + "/run-eval", { method: "POST", body: fd })
