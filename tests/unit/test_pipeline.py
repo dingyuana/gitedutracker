@@ -770,3 +770,70 @@ class TestSampleSize:
 
         assert result["success"] == 4
         assert mock_score_student.call_count == 4
+
+
+class TestPlanIdFiltering:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_plan_id_limits_to_that_plan(self, mock_sync_day, mock_score_student,
+                                         mock_send_daily, session, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        from app.models import Project, Student, DailyPlan, ScoringConfig, GithubActivity
+        from datetime import date
+
+        target = date(2026, 8, 25)
+        p = Project(name='P'); session.add(p); session.commit(); session.refresh(p)
+        students = []
+        for i in range(4):
+            s = Student(name=f's{i}', email=f's{i}@x.com', github_repo=f's{i}/r', project_id=p.id)
+            session.add(s); session.commit(); session.refresh(s)
+            students.append(s)
+        plan_a = DailyPlan(project_id=p.id, date=target, content='plan A', student_id=None)
+        plan_b = DailyPlan(project_id=p.id, date=target, content='plan B', student_id=None)
+        session.add(plan_a); session.add(plan_b)
+        session.add(ScoringConfig())
+        for s in students:
+            session.add(GithubActivity(student_id=s.id, date=target, commits_count=1, status="ok"))
+        session.commit()
+        session.refresh(plan_a); session.refresh(plan_b)
+
+        mock_sync_day.return_value = 4
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(target, session=session, eval_mode="diff", plan_id=plan_b.id)
+
+        assert result["success"] == 4
+        assert mock_score_student.call_count == 4
+        calls = mock_score_student.call_args_list
+        for c in calls:
+            assert c.args[0]["plan_content"] == "plan B"
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_unknown_plan_id_scores_nothing(self, mock_sync_day, mock_score_student,
+                                            mock_send_daily, session, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        from app.models import Project, Student, DailyPlan, ScoringConfig, GithubActivity
+        from datetime import date
+
+        target = date(2026, 8, 25)
+        p = Project(name='P'); session.add(p); session.commit(); session.refresh(p)
+        for i in range(3):
+            s = Student(name=f's{i}', email=f's{i}@x.com', github_repo=f's{i}/r', project_id=p.id)
+            session.add(s); session.commit(); session.refresh(s)
+        session.add(DailyPlan(project_id=p.id, date=target, content='plan A', student_id=None))
+        session.add(ScoringConfig())
+        session.commit()
+
+        mock_sync_day.return_value = 3
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(target, session=session, eval_mode="diff", plan_id=99999)
+
+        assert result["success"] == 0
+        assert mock_score_student.call_count == 0

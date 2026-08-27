@@ -594,15 +594,40 @@ def run_project_eval(
     date: str = Form(None),
     eval_mode: str = Form("diff"),
     only_missing: str = Form("0"),
+    plan_id: str = Form(None),
 ):
     target_date = datetime.date.fromisoformat(date) if date else _date.today()
+    pid = None
+    if plan_id and str(plan_id).strip().isdigit():
+        pid = int(plan_id)
     job_id = start_eval_job(
         target_date,
         project_id=project_id,
         only_missing=str(only_missing).lower() in ("1", "true", "on"),
         eval_mode=eval_mode if eval_mode in ("diff", "full") else "diff",
+        plan_id=pid,
     )
     return JSONResponse({"job_id": job_id})
+
+
+@router.get("/projects/{project_id}/plans")
+def project_plans_for_date(
+    project_id: int,
+    auth_check=Depends(require_auth),
+    date: str = None,
+    session: Session = Depends(get_session),
+):
+    query = select(DailyPlan).where(DailyPlan.project_id == project_id)
+    if date:
+        query = query.where(DailyPlan.date == datetime.date.fromisoformat(date))
+    query = query.order_by(DailyPlan.date.desc())
+    plans = session.exec(query).all()
+    return JSONResponse([{
+        "id": p.id,
+        "date": str(p.date),
+        "content": p.content,
+        "student_id": p.student_id,
+    } for p in plans])
 
 
 @router.get("/eval-progress/{job_id}")

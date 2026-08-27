@@ -47,6 +47,16 @@
             <label>评测日期
                 <input type="date" id="eval-date-input" value="{{ today }}">
             </label>
+            <label>评测目标（当日计划）
+                <select id="eval-plan-input">
+                    <option value="">全部计划</option>
+                </select>
+                <span style="font-size:0.75rem;color:var(--text-muted)">选择指定计划作为评测目标；无可选项可先新增计划。</span>
+            </label>
+            <label>新增评测计划
+                <input type="text" id="new-plan-content" placeholder="输入当日计划内容，如：完成流水灯与串口通信">
+                <button type="button" class="btn btn-small" id="new-plan-btn">新增计划</button>
+            </label>
             <label>评审模式
                 <select id="eval-mode-input">
                     <option value="diff">当日变更评审（快）</option>
@@ -170,16 +180,53 @@
     var activePid = null;
     var activeBtn = null;
     var activeBox = null;
+    function loadPlans(pid, date) {
+        var sel = document.getElementById("eval-plan-input");
+        sel.innerHTML = '<option value="">全部计划</option>';
+        fetch("/projects/" + pid + "/plans?date=" + date)
+            .then(function (r) { return r.json(); })
+            .then(function (plans) {
+                plans.forEach(function (pl) {
+                    var opt = document.createElement("option");
+                    opt.value = pl.id;
+                    opt.textContent = (pl.date) + " · " + pl.content;
+                    sel.appendChild(opt);
+                });
+            })
+            .catch(function () { /* 计划加载失败不影响评测 */ });
+    }
     function openEvalModal(name, pid, btn, box) {
         document.getElementById("eval-modal-name").textContent = name;
         document.getElementById("eval-date-input").value = "{{ today }}";
         activePid = pid; activeBtn = btn; activeBox = box;
+        loadPlans(pid, document.getElementById("eval-date-input").value);
+        document.getElementById("new-plan-content").value = "";
         if (evalModal) evalModal.hidden = false;
     }
     function closeEvalModal() { if (evalModal) evalModal.hidden = true; }
     if (evalModal) {
         document.getElementById("eval-modal-close").addEventListener("click", closeEvalModal);
         document.getElementById("eval-modal-cancel").addEventListener("click", closeEvalModal);
+        document.getElementById("eval-date-input").addEventListener("change", function () {
+            if (activePid) loadPlans(activePid, this.value);
+        });
+        document.getElementById("new-plan-btn").addEventListener("click", function () {
+            var content = document.getElementById("new-plan-content").value.trim();
+            var date = document.getElementById("eval-date-input").value;
+            if (!content) return;
+            var fd = new FormData();
+            fd.append("date", date);
+            fd.append("project_id", activePid);
+            fd.append("content", content);
+            fd.append("student_id", "");
+            fetch("/plans", { method: "POST", body: fd })
+                .then(function (r) {
+                    if (r.ok) {
+                        document.getElementById("new-plan-content").value = "";
+                        loadPlans(activePid, date);
+                    }
+                });
+        });
         evalModal.addEventListener("click", function (e) {
             if (e.target === evalModal) closeEvalModal();
         });
@@ -205,6 +252,8 @@
         fd.append("date", document.getElementById("eval-date-input").value);
         fd.append("eval_mode", document.getElementById("eval-mode-input").value);
         fd.append("only_missing", document.getElementById("eval-scope-input").value);
+        const selPlan = document.getElementById("eval-plan-input").value;
+        if (selPlan) fd.append("plan_id", selPlan);
         const ss = document.getElementById("eval-sample-input").value.trim();
         if (ss) fd.append("sample_size", ss);
 

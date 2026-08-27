@@ -17,6 +17,7 @@ def start_eval_job(
     project_id: int,
     only_missing: bool = False,
     eval_mode: str = "diff",
+    plan_id: int | None = None,
 ) -> str:
     job_id = uuid.uuid4().hex[:12]
     with _lock:
@@ -25,6 +26,7 @@ def start_eval_job(
             "project_id": project_id,
             "date": str(target_date),
             "eval_mode": eval_mode,
+            "plan_id": plan_id,
             "status": "syncing",
             "done": 0,
             "total": 0,
@@ -50,6 +52,7 @@ def start_eval_job(
                 only_missing=only_missing,
                 eval_mode=eval_mode,
                 project_id=project_id,
+                plan_id=plan_id,
                 progress_cb=progress_cb,
             )
             with _lock:

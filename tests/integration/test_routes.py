@@ -319,11 +319,11 @@ class TestPostRunToday:
 
     def test_index_has_eval_panel_controls(self, app):
         resp = app.get("/")
-        assert 'id="eval-scope"' in resp.text
+        assert 'id="eval-scope-input"' in resp.text
         assert "仅未测评" in resp.text
         assert "全部重新评测" in resp.text
         assert 'type="date"' in resp.text
-        assert 'id="eval-mode"' in resp.text
+        assert 'id="eval-mode-input"' in resp.text
 
     def test_only_missing_passed_to_pipeline(self, app, db_session):
         with patch("app.api.routes.run_today") as mock_run:
@@ -341,7 +341,7 @@ class TestPostRunToday:
 
     def test_index_panel_has_eval_mode_select(self, app):
         resp = app.get("/")
-        assert 'name="eval_mode"' in resp.text
+        assert 'id="eval-mode-input"' in resp.text
         assert "当日变更评审" in resp.text
         assert "全项目代码审核" in resp.text
 
@@ -359,6 +359,43 @@ class TestPostRunToday:
         _, args, kwargs = mock_start.mock_calls[0]
         assert kwargs.get("project_id") == seed_data['p1'].id
         assert kwargs.get("eval_mode") == "full"
+
+    def test_project_eval_endpoint_passes_plan_id(self, app, seed_data):
+        with patch("app.api.routes.start_eval_job") as mock_start:
+            mock_start.return_value = "job123"
+            resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": str(seed_data['target']),
+                "eval_mode": "diff",
+                "only_missing": "0",
+                "plan_id": str(seed_data['plan_all'].id),
+            })
+        assert resp.status_code == 200
+        _, args, kwargs = mock_start.mock_calls[0]
+        assert kwargs.get("plan_id") == seed_data['plan_all'].id
+
+    def test_project_eval_blank_plan_id_passes_none(self, app, seed_data):
+        with patch("app.api.routes.start_eval_job") as mock_start:
+            mock_start.return_value = "job123"
+            app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": str(seed_data['target']),
+                "plan_id": "",
+            })
+        _, args, kwargs = mock_start.mock_calls[0]
+        assert kwargs.get("plan_id") is None
+
+    def test_project_plans_endpoint_returns_plans_for_date(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}/plans?date={seed_data['target']}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["content"] == "完成登录模块"
+        assert data[0]["date"] == str(seed_data['target'])
+
+    def test_project_plans_endpoint_empty_without_date(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}/plans")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
 
     def test_eval_progress_endpoint(self, app):
         import app.services.eval_jobs as ej

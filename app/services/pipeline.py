@@ -21,6 +21,7 @@ def run_today(
     only_missing: bool = False,
     eval_mode: str = "diff",
     project_id: Optional[int] = None,
+    plan_id: Optional[int] = None,
     sample_size: int = None,
     progress_cb=None,
 ) -> dict:
@@ -31,6 +32,7 @@ def run_today(
     3. For each (student, project, date) combo: score → compute → persist.
        only_missing=True 时跳过已有 done 评测的组合（failed 仍会重试）。
        eval_mode="diff" 附带当日真实 diff；"full" 附带全项目代码快照。
+       plan_id 指定后仅使用该计划的当日评测目标。
     4. LLM failures are caught and stored as failed with retry info.
 
     Returns:
@@ -48,9 +50,10 @@ def run_today(
     student_map = {s.id: s for s in all_students}
 
     # Step 1: build (student, plan) pairs first — sync scope derives from pairs
-    all_plans = session.exec(
-        select(DailyPlan).where(DailyPlan.date == target_date)
-    ).all()
+    plan_q = select(DailyPlan).where(DailyPlan.date == target_date)
+    if plan_id is not None:
+        plan_q = plan_q.where(DailyPlan.id == plan_id)
+    all_plans = session.exec(plan_q).all()
 
     pairs: list[tuple[Student, DailyPlan]] = []
     for plan in all_plans:
