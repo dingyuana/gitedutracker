@@ -19,15 +19,27 @@ class GitMirrorError(Exception):
     pass
 
 
-def _run_git(cwd: str | Path, *args: str) -> str:
+def _run_git(cwd: str | Path, *args: str, timeout: int = 60) -> str:
     result = subprocess.run(
         ["git", "-c", "http.version=HTTP/1.1", *args],
-        cwd=str(cwd), capture_output=True
+        cwd=str(cwd), capture_output=True, timeout=timeout
     )
     if result.returncode != 0:
         stderr = result.stderr.decode("utf-8", errors="replace").strip()[:200]
         raise GitMirrorError(f"git {' '.join(args[:2])} 失败: {stderr}")
     return result.stdout.decode("utf-8", errors="replace")
+
+
+def _to_ssh_url(repo: str) -> str:
+    """GitHub SSH over port 443 URL"""
+    cleaned = repo.strip().rstrip("/")
+    if cleaned.endswith(".git"):
+        cleaned = cleaned[:-4]
+    if "://" in cleaned or cleaned.startswith(("/", "~")) or cleaned[1:3] == ":\\":
+        cleaned = cleaned.split("://")[-1].split("/")[-1]
+    else:
+        cleaned = cleaned.replace("/", "__")
+    return f"git@ssh.github.com:443:{cleaned}.git"
 
 
 def _to_remote_url(repo: str) -> str:
@@ -58,9 +70,9 @@ def ensure_mirror(repo: str, mirror_dir: str | None = None) -> Path:
     if path.exists():
         if (path / "HEAD").exists():
             try:
-                _run_git(path, "remote", "update", "--prune")
+                _run_git(path, "remote", "update", "--prune", timeout=10)
             except GitMirrorError:
-                pass
+                pass  # 更新失败不影响读取历史数据
             return path
         import shutil
         shutil.rmtree(path, ignore_errors=True)
@@ -68,9 +80,14 @@ def ensure_mirror(repo: str, mirror_dir: str | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     url = _to_remote_url(repo)
     try:
-        _run_git(path.parent, "clone", "--mirror", url, str(path))
-    except GitMirrorError as e:
-        raise GitMirrorError(f"镜像克隆失败 {repo}: {e}") from e
+        _run_git(path.parent, "clone", "--mirror", url, str(path), timeout=180)
+    except GitMirrorError:
+        # 回退 SSH over 443（GitHub HTTPS git 可能受二级限流）
+        try:
+            ssh_url = _to_ssh_url(repo)
+            _run_git(path.parent, "clone", "--mirror", ssh_url, str(path), timeout=180)
+        except GitMirrorError as e2:
+            raise GitMirrorError(f"镜像克隆失败 {repo} (HTTPS/SSH 均失败)") from e2
     return path
 
 

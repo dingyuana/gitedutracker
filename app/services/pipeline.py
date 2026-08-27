@@ -21,6 +21,7 @@ def run_today(
     only_missing: bool = False,
     eval_mode: str = "diff",
     project_id: Optional[int] = None,
+    sample_size: int = None,
     progress_cb=None,
 ) -> dict:
     """Run the full auto-scoring pipeline for a given date.
@@ -58,9 +59,17 @@ def run_today(
             if s_ is not None:
                 pairs.append((s_, plan))
             continue
-        for s_ in all_students:
-            if s_.project_id == plan.project_id:
+        if sample_size is not None and sample_size > 0:
+            import random as _random
+            candidates = [s_ for s_ in all_students if s_.project_id == plan.project_id]
+            _random.shuffle(candidates)
+            sampled = candidates[:sample_size]
+            for s_ in sampled:
                 pairs.append((s_, plan))
+        else:
+            for s_ in all_students:
+                if s_.project_id == plan.project_id:
+                    pairs.append((s_, plan))
     unassigned = [s.name for s in all_students if s.project_id is None]
     if unassigned and all_plans:
         import logging

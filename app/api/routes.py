@@ -565,6 +565,10 @@ async def run_today_endpoint(
     eval_mode = str(form_data.get("eval_mode") or qp.get("eval_mode") or "diff").strip().lower()
     if eval_mode not in ("diff", "full"):
         eval_mode = "diff"
+    sample_size_raw = form_data.get("sample_size") or qp.get("sample_size")
+    sample_size = None
+    if sample_size_raw and str(sample_size_raw).strip().isdigit():
+        sample_size = int(sample_size_raw)
 
     if date:
         try:
@@ -575,7 +579,8 @@ async def run_today_endpoint(
     else:
         target_date = _date.today()
 
-    result = run_today(target_date, session=session, only_missing=only_missing, eval_mode=eval_mode)
+    result = run_today(target_date, session=session, only_missing=only_missing, eval_mode=eval_mode,
+                       sample_size=sample_size)
 
     if str(form_data.get("redirect", "")).lower() in ("1", "true"):
         return RedirectResponse(url=f"/results?date={target_date}", status_code=303)

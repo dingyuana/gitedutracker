@@ -705,3 +705,68 @@ class TestLLMTimeoutResilience:
             Assessment.date == seed_data['target'])).all() if a.status == "failed"]
         assert len(failed_rows) == 2
         assert all(a.next_retry_at is not None for a in failed_rows)
+
+
+class TestSampleSize:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_sample_size_limits_global_plan(self, mock_sync_day, mock_score_student,
+                                            mock_send_daily, session, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        from app.models import Project, Student, DailyPlan, ScoringConfig, GithubActivity
+        from datetime import date
+
+        target = date(2026, 8, 25)
+        p = Project(name='P'); session.add(p); session.commit(); session.refresh(p)
+        students = []
+        for i in range(8):
+            s = Student(name=f's{i}', email=f's{i}@x.com', github_repo=f's{i}/r', project_id=p.id)
+            session.add(s); session.commit(); session.refresh(s)
+            students.append(s)
+        session.add(DailyPlan(project_id=p.id, date=target, content='plan', student_id=None))
+        session.add(ScoringConfig())
+        for s in students:
+            session.add(GithubActivity(student_id=s.id, date=target, commits_count=1, status="ok"))
+        session.commit()
+
+        mock_sync_day.return_value = 8
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(target, session=session, eval_mode="diff", sample_size=3)
+
+        assert result["success"] == 3
+        assert mock_score_student.call_count == 3
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_no_sample_limit_evaluates_all(self, mock_sync_day, mock_score_student,
+                                           mock_send_daily, session, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+        from app.models import Project, Student, DailyPlan, ScoringConfig, GithubActivity
+        from datetime import date
+
+        target = date(2026, 8, 25)
+        p = Project(name='P'); session.add(p); session.commit(); session.refresh(p)
+        students = []
+        for i in range(4):
+            s = Student(name=f's{i}', email=f's{i}@x.com', github_repo=f's{i}/r', project_id=p.id)
+            session.add(s); session.commit(); session.refresh(s)
+            students.append(s)
+        session.add(DailyPlan(project_id=p.id, date=target, content='plan', student_id=None))
+        session.add(ScoringConfig())
+        for s in students:
+            session.add(GithubActivity(student_id=s.id, date=target, commits_count=1, status="ok"))
+        session.commit()
+
+        mock_sync_day.return_value = 4
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(target, session=session, eval_mode="diff", sample_size=None)
+
+        assert result["success"] == 4
+        assert mock_score_student.call_count == 4
