@@ -373,6 +373,22 @@ class TestPostRunToday:
         _, args, kwargs = mock_start.mock_calls[0]
         assert kwargs.get("plan_id") == seed_data['plan_all'].id
 
+    def test_project_eval_uses_plan_date_when_plan_id_set(self, app, seed_data):
+        plan_date = seed_data['plan_all'].date
+        other_date = date(2026, 12, 31)
+        with patch("app.api.routes.start_eval_job") as mock_start:
+            mock_start.return_value = "job123"
+            resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": str(other_date),
+                "eval_mode": "diff",
+                "only_missing": "0",
+                "plan_id": str(seed_data['plan_all'].id),
+            })
+        assert resp.status_code == 200
+        _, args, kwargs = mock_start.mock_calls[0]
+        assert kwargs["plan_id"] == seed_data['plan_all'].id
+        assert args[0] == plan_date
+
     def test_project_eval_blank_plan_id_passes_none(self, app, seed_data):
         with patch("app.api.routes.start_eval_job") as mock_start:
             mock_start.return_value = "job123"

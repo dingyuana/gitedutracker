@@ -595,11 +595,16 @@ def run_project_eval(
     eval_mode: str = Form("diff"),
     only_missing: str = Form("0"),
     plan_id: str = Form(None),
+    session: Session = Depends(get_session),
 ):
     target_date = datetime.date.fromisoformat(date) if date else _date.today()
     pid = None
     if plan_id and str(plan_id).strip().isdigit():
         pid = int(plan_id)
+        # 指定计划时，使用计划自身的日期（计划可能不是今天的）
+        plan_row = session.get(DailyPlan, pid)
+        if plan_row:
+            target_date = plan_row.date
     job_id = start_eval_job(
         target_date,
         project_id=project_id,
