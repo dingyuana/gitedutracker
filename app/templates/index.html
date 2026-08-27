@@ -5,9 +5,6 @@
 
 <div class="card">
     <div class="inline-form">
-        <label>评测日期
-            <input type="date" name="eval_date" id="eval-date" value="{{ today }}">
-        </label>
         <label>评审模式
             <select name="eval_mode" id="eval-mode">
                 <option value="diff">当日变更评审（快）</option>
@@ -20,18 +17,44 @@
                 <option value="0">全部重新评测</option>
             </select>
         </label>
+        <label>抽样人数
+            <input type="number" name="sample_size" id="eval-sample" min="1" max="200" value="" placeholder="留空=全部">
+        </label>
     </div>
     <p style="color:#5f6368;font-size:0.82rem;margin:0.5rem 0 0">
-        在下方各项目卡片点击「评测」即按以上配置运行该项目的全班评分。
+        在下方各项目卡片点击「评测」即按该卡片内所选日期与以上配置运行该项目的评分。
     </p>
-    <h3 style="margin-top:1rem">新建项目</h3>
-    <form action="/projects" method="POST" class="inline-form">
-        <input type="text" name="name" placeholder="项目名称" required>
-        <input type="text" name="description" placeholder="描述（可选）">
-        <label>开始 <input type="date" name="start_date"></label>
-        <label>结束 <input type="date" name="end_date"></label>
-        <button type="submit" class="btn btn-primary">创建</button>
-    </form>
+    <button type="button" class="btn btn-primary" id="new-project-btn" style="margin-top:0.75rem">＋ 新建项目</button>
+</div>
+
+<!-- 新建项目弹窗 -->
+<div class="modal-overlay" id="new-project-modal" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <h3>新建项目</h3>
+            <button type="button" class="modal-close" data-close-modal>&times;</button>
+        </div>
+        <form action="/projects" method="POST">
+            <div class="modal-body">
+                <label>项目名称
+                    <input type="text" name="name" placeholder="项目名称" required>
+                </label>
+                <label>描述
+                    <input type="text" name="description" placeholder="描述（可选）">
+                </label>
+                <label>开始日期
+                    <input type="date" name="start_date">
+                </label>
+                <label>结束日期
+                    <input type="date" name="end_date">
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" data-close-modal>取消</button>
+                <button type="submit" class="btn btn-primary">创建</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <h2>进行中</h2>
@@ -63,6 +86,9 @@
             {% endif %}
         </div>
         <div class="card-actions">
+            <label class="eval-date-label">评测日期
+                <input type="date" class="card-eval-date" value="{{ today }}">
+            </label>
             <button type="button" class="btn btn-small btn-success eval-btn"
                     data-project="{{ c.project.id }}"
                     data-name="{{ c.project.name }}">评测</button>
@@ -111,10 +137,29 @@
 
 <script>
 (function () {
+    var modal = document.getElementById("new-project-modal");
+    var openBtn = document.getElementById("new-project-btn");
+    function openModal() { if (modal) modal.hidden = false; }
+    function closeModal() { if (modal) modal.hidden = true; }
+    if (openBtn) openBtn.addEventListener("click", openModal);
+    if (modal) {
+        modal.querySelectorAll("[data-close-modal]").forEach(function (el) {
+            el.addEventListener("click", closeModal);
+        });
+        modal.addEventListener("click", function (e) {
+            if (e.target === modal) closeModal();
+        });
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && !modal.hidden) closeModal();
+        });
+    }
+
     document.querySelectorAll(".eval-btn").forEach(function (btn) {
         btn.addEventListener("click", function () {
+            var card = btn.closest(".project-card");
             var pid = btn.dataset.project;
             var box = document.getElementById("progress-" + pid);
+            var dateInput = card.querySelector(".card-eval-date");
             var textEl = box.querySelector(".eval-progress-text");
             var bar = box.querySelector(".progress-bar");
             box.hidden = false;
@@ -122,9 +167,11 @@
             bar.style.width = "5%";
 
             var fd = new FormData();
-            fd.append("date", document.getElementById("eval-date").value);
+            fd.append("date", dateInput ? dateInput.value : "");
             fd.append("eval_mode", document.getElementById("eval-mode").value);
             fd.append("only_missing", document.getElementById("eval-scope").value);
+            const ss = document.getElementById("eval-sample").value.trim();
+            if (ss) fd.append("sample_size", ss);
 
             fetch("/projects/" + pid + "/run-eval", { method: "POST", body: fd })
                 .then(function (r) { return r.json(); })
