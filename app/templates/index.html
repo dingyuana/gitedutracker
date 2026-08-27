@@ -183,7 +183,7 @@
     function loadPlans(pid) {
         var sel = document.getElementById("eval-plan-input");
         sel.innerHTML = '<option value="">全部计划（不限）</option>';
-        fetch("/projects/" + pid + "/plans")
+        fetch("/projects/" + pid + "/plans", {headers: {"Accept": "application/json"}})
             .then(function (r) { return r.json(); })
             .then(function (plans) {
                 plans.forEach(function (pl) {
