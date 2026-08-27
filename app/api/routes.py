@@ -184,13 +184,14 @@ def project_detail_page(
     ).all()
     by_date: dict = {}
     for a in assessments:
-        if a.status != "done":
+        if a.status not in ("done", "failed"):
             continue
         student = session.get(Student, a.student_id)
         by_date.setdefault(a.date, []).append({
             "student_name": student.name if student else f"#{a.student_id}",
             "total_score": a.total_score,
             "comment": a.comment,
+            "status": a.status,
         })
     date_plan_map = {p.date: p.content for p in plans}
     assessments_by_date = [
