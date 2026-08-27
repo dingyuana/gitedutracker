@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -13,6 +14,9 @@ from app.services.scoring_engine import compute_final
 from app.services.email_service import send_daily_comments
 from app.services.settings_service import get_effective_settings
 from app.services.mirror_service import extract_day_activity, extract_snapshot
+
+# SQLite 单写者：串行化所有评测写库，避免并发评测触发 database is locked
+_run_lock = threading.Lock()
 
 
 def _student_repo(student) -> str:
@@ -43,6 +47,23 @@ def run_today(
     Returns:
         {"success": int, "failed": int, "details": [...]}
     """
+    with _run_lock:
+        return _run_today(
+            target_date, session, only_missing, eval_mode,
+            project_id, plan_id, sample_size, progress_cb,
+        )
+
+
+def _run_today(
+    target_date: date,
+    session: Optional[Session],
+    only_missing: bool,
+    eval_mode: str,
+    project_id: Optional[int],
+    plan_id: Optional[int],
+    sample_size: int,
+    progress_cb,
+) -> dict:
     if session is None:
         from app.database import get_session
         session = next(get_session())

@@ -837,3 +837,43 @@ class TestPlanIdFiltering:
 
         assert result["success"] == 0
         assert mock_score_student.call_count == 0
+
+
+class TestConcurrentSerialization:
+
+    def test_run_today_serialized_by_lock(self, seed_data, mock_settings, mock_ai_response):
+        """并发调用 run_today 被全局锁串行化，核心 _run_today 同一时刻只执行一次。"""
+        import threading
+        import time
+        from unittest.mock import patch as _p
+        from app.services.pipeline import run_today, _run_lock
+
+        active = 0
+        max_active = 0
+        state_lock = threading.Lock()
+
+        def fake_core(*args, **kwargs):
+            nonlocal active, max_active
+            with state_lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.05)
+            with state_lock:
+                active -= 1
+            return {"success": 1, "failed": 0, "details": []}
+
+        with _p("app.services.pipeline._run_today", side_effect=fake_core):
+            results = []
+
+            def worker():
+                results.append(run_today(seed_data['target']))
+
+            threads = [threading.Thread(target=worker) for _ in range(3)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        assert len(results) == 3
+        assert max_active == 1
+        assert all(r["success"] == 1 for r in results)

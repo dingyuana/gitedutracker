@@ -412,6 +412,26 @@ class TestPostRunToday:
         _, args, kwargs = mock_start.mock_calls[0]
         assert kwargs.get("sample_size") == 5
 
+    def test_run_eval_rejects_when_job_running(self, app, seed_data):
+        with patch("app.api.routes.is_running", return_value=True), \
+             patch("app.api.routes.start_eval_job") as mock_start:
+            resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": str(seed_data['target']),
+                "eval_mode": "diff",
+                "only_missing": "0",
+            })
+        assert resp.status_code == 409
+        assert resp.json()["busy"] is True
+        mock_start.assert_not_called()
+
+    def test_run_today_rejects_when_job_running(self, app):
+        with patch("app.api.routes.is_running", return_value=True), \
+             patch("app.api.routes.run_today") as mock_run:
+            resp = app.post("/run-today", params={"date": "2026-08-21"})
+        assert resp.status_code == 409
+        assert resp.json()["busy"] is True
+        mock_run.assert_not_called()
+
     def test_project_eval_page_lists_all_plans_in_picker(self, app, seed_data):
         resp = app.get(f"/projects/{seed_data['p1'].id}/eval")
         assert resp.status_code == 200

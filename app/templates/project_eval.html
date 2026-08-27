@@ -164,7 +164,16 @@
 
         fetch("/projects/" + pid + "/run-eval", {
             method: "POST", body: body, headers: {"Content-Type": "application/x-www-form-urlencoded"}
-        }).then(function (r) { return r.json(); }).then(function (d) {
+        }).then(function (r) {
+            if (r.status === 409) {
+                return r.json().then(function (d) {
+                    document.getElementById("progress-label").textContent = "⚠️ " + (d.error || "已有评测任务正在进行，请稍后再试");
+                    return null;
+                });
+            }
+            return r.json();
+        }).then(function (d) {
+            if (!d) return;
             if (!d.job_id) { document.getElementById("progress-label").textContent = "评测启动失败，请重试"; return; }
             var timer = setInterval(function () {
                 fetch("/eval-progress/" + d.job_id).then(function (r) { return r.json(); }).then(function (p) {

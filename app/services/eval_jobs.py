@@ -82,6 +82,24 @@ def get_job(job_id: str) -> dict | None:
         return dict(job) if job else None
 
 
+def is_running() -> bool:
+    """是否有评测任务正在进行（syncing/scoring 中）。"""
+    with _lock:
+        return any(
+            job.get("status") in ("syncing", "scoring")
+            for job in _jobs.values()
+        )
+
+
+def running_job_id() -> str | None:
+    """返回当前正在进行的评测 job_id，无则返回 None。"""
+    with _lock:
+        for jid, job in _jobs.items():
+            if job.get("status") in ("syncing", "scoring"):
+                return jid
+    return None
+
+
 def datetime_now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()

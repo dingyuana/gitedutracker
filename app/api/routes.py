@@ -10,7 +10,7 @@ from app.models import Student, Project, DailyPlan, GithubActivity, Assessment, 
 from app.utils.export import export_daily
 from app.services.import_service import import_students
 from app.services.pipeline import run_today
-from app.services.eval_jobs import start_eval_job, get_job
+from app.services.eval_jobs import start_eval_job, get_job, is_running
 from app.middleware.auth import require_auth, login_endpoint, security
 
 router = APIRouter()
@@ -805,6 +805,9 @@ async def run_today_endpoint(
     auth_check=Depends(require_auth),
     session: Session = Depends(get_session),
 ):
+    if is_running():
+        return JSONResponse({"busy": True, "error": "已有评测任务正在进行，请稍后再试"},
+                            status_code=409)
     qp = request.query_params
     form_data: dict = {}
     if "form" in request.headers.get("content-type", ""):
@@ -866,6 +869,9 @@ def run_project_eval(
     sample_size: str = Form(None),
     session: Session = Depends(get_session),
 ):
+    if is_running():
+        return JSONResponse({"busy": True, "error": "已有评测任务正在进行，请稍后再试"},
+                            status_code=409)
     target_date = datetime.date.fromisoformat(date) if date else _date.today()
     pid = None
     if plan_id and str(plan_id).strip().isdigit():
