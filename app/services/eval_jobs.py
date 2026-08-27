@@ -18,6 +18,7 @@ def start_eval_job(
     only_missing: bool = False,
     eval_mode: str = "diff",
     plan_id: int | None = None,
+    sample_size: int | None = None,
 ) -> str:
     job_id = uuid.uuid4().hex[:12]
     with _lock:
@@ -53,6 +54,7 @@ def start_eval_job(
                 eval_mode=eval_mode,
                 project_id=project_id,
                 plan_id=plan_id,
+                sample_size=sample_size,
                 progress_cb=progress_cb,
             )
             with _lock:

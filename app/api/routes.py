@@ -753,6 +753,22 @@ async def run_today_endpoint(
     return result
 
 
+@router.get("/projects/{project_id}/eval", response_class=HTMLResponse)
+def project_eval_page(
+    request: Request, project_id: int,
+    auth_check=Depends(require_auth), session: Session = Depends(get_session),
+):
+    project, students = _load_project_ctx(session, project_id)
+    plans = sorted(
+        session.exec(select(DailyPlan).where(DailyPlan.project_id == project_id)).all(),
+        key=lambda p: p.date, reverse=True,
+    )
+    return request.app.state.templates.TemplateResponse(request, "project_eval.html", {
+        "project": project, "students": students, "plans": plans,
+        "today": _date.today(),
+    })
+
+
 @router.post("/projects/{project_id}/run-eval")
 def run_project_eval(
     project_id: int,
@@ -761,6 +777,7 @@ def run_project_eval(
     eval_mode: str = Form("diff"),
     only_missing: str = Form("0"),
     plan_id: str = Form(None),
+    sample_size: str = Form(None),
     session: Session = Depends(get_session),
 ):
     target_date = datetime.date.fromisoformat(date) if date else _date.today()
@@ -771,12 +788,16 @@ def run_project_eval(
         plan_row = session.get(DailyPlan, pid)
         if plan_row:
             target_date = plan_row.date
+    sample = None
+    if sample_size and str(sample_size).strip().isdigit():
+        sample = int(sample_size)
     job_id = start_eval_job(
         target_date,
         project_id=project_id,
         only_missing=str(only_missing).lower() in ("1", "true", "on"),
         eval_mode=eval_mode if eval_mode in ("diff", "full") else "diff",
         plan_id=pid,
+        sample_size=sample,
     )
     return JSONResponse({"job_id": job_id})
 

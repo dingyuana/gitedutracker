@@ -6,20 +6,31 @@
     {{ project.name }} · 计划管理
 </h1>
 
-<div class="card">
-    <h3>添加计划</h3>
+<div class="card form-card">
+    <h3><span class="fc-icon">📅</span>添加计划</h3>
     <form action="/plans" method="POST">
         <input type="hidden" name="project_id" value="{{ project.id }}">
-        <div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
-            <input type="date" name="date" value="{{ today }}" required>
-            <input type="text" name="content" placeholder="当日工作计划/教程任务" required style="flex:1;min-width:200px">
-            <select name="student_id">
-                <option value="">全体学生</option>
-                {% for s in students %}
-                <option value="{{ s.id }}">{{ s.name }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit" class="btn btn-primary btn-small">添加</button>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>日期</label>
+                <input type="date" name="date" value="{{ today }}" required>
+            </div>
+            <div class="form-group">
+                <label>适用范围</label>
+                <select name="student_id">
+                    <option value="">全体学生</option>
+                    {% for s in students %}
+                    <option value="{{ s.id }}">{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group span-all">
+                <label>工作计划</label>
+                <input type="text" name="content" placeholder="如：完成登录模块、编写单元测试…" required>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">＋ 添加</button>
         </div>
     </form>
 </div>

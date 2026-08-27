@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — 评测{% endblock %}
+{% block content %}
+<style>
+    .eval-grid {
+        display: grid;
+        grid-template-columns: minmax(300px, 1fr) minmax(380px, 1.4fr);
+        gap: 1.25rem;
+        align-items: start;
+    }
+    @media (max-width: 820px) {
+        .eval-grid { grid-template-columns: 1fr; }
+    }
+    .eval-block { border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; background: #fafbfc; }
+    .eval-block h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+    .eval-block h3 .step-num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.6rem; height: 1.6rem; border-radius: 50%;
+        background: var(--primary); color: #fff; font-size: 0.85rem; flex-shrink: 0;
+    }
+    .eval-block .form-group:last-child { margin-bottom: 0; }
+    .plan-pick { display: flex; flex-direction: column; gap: 0.5rem; max-height: 300px; overflow-y: auto; }
+    .plan-pick label {
+        display: flex; align-items: flex-start; gap: 0.6rem; padding: 0.6rem 0.75rem;
+        border: 1px solid var(--border); border-radius: var(--radius-sm);
+        background: #fff; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .plan-pick label:hover { border-color: var(--primary); background: #f0f6ff; }
+    .plan-pick label:has(input:checked) { border-color: var(--primary); background: #e8f0fe; }
+    .plan-pick label input { margin-top: 0.2rem; accent-color: var(--primary); }
+    .plan-pick .plan-meta { font-size: 0.95rem; line-height: 1.5; }
+    .plan-pick .plan-meta .plan-date { font-weight: 600; color: var(--primary); margin-right: 0.4rem; }
+    .plan-pick .plan-meta small { color: var(--text-muted); }
+    .plan-pick .plan-none { color: var(--text-muted); font-style: italic; text-align: center; padding: 1rem; }
+    .quick-add { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .quick-add .full { grid-column: 1 / -1; }
+    .quick-go { margin-top: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .progress-zone { margin-top: 1rem; text-align: center; padding: 1.25rem; border: 1px dashed var(--border); border-radius: var(--radius); background: #fff; }
+    .progress-zone[hidden] { display: none; }
+    .progress-label { font-size: 0.9rem; color: var(--text-muted); margin-top: 0.5rem; }
+</style>
+
+<h1>
+    <a href="/projects/{{ project.id }}" style="text-decoration:none;color:var(--text-muted)">←</a>
+    {{ project.name }} · 评测
+</h1>
+
+<div class="eval-grid">
+    <div>
+        <div class="card eval-block">
+            <h3><span class="step-num">1</span>新增工作计划</h3>
+            <form action="/plans" method="POST">
+                <input type="hidden" name="project_id" value="{{ project.id }}">
+                <div class="quick-add">
+                    <div class="form-group" style="margin-bottom:0.75rem">
+                        <label>日期</label>
+                        <input type="date" name="date" value="{{ today }}" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0.75rem">
+                        <label>适用范围</label>
+                        <select name="student_id">
+                            <option value="">全体学生</option>
+                            {% for s in students %}
+                            <option value="{{ s.id }}">{{ s.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group full" style="margin-bottom:0">
+                        <label>工作计划</label>
+                        <input type="text" name="content" placeholder="如：完成登录模块、编写单元测试…" required>
+                    </div>
+                </div>
+                <div class="quick-go">
+                    <button type="submit" class="btn btn-primary btn-small">＋ 添加计划</button>
+                    <a href="/projects/{{ project.id }}/plans" class="btn btn-small">管理全部计划 →</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div>
+        <div class="card eval-block">
+            <h3><span class="step-num">2</span>选择评测目标</h3>
+            <form id="eval-form">
+                <div class="form-group">
+                    <label>评测目标（当日计划）</label>
+                    <div class="plan-pick">
+                        <label>
+                            <input type="radio" name="plan" value="" checked>
+                            <span class="plan-meta"><span class="plan-date">全部计划</span><small>不限（按日期自动匹配）</small></span>
+                        </label>
+                        {% for p in plans %}
+                        <label>
+                            <input type="radio" name="plan" value="{{ p.id }}">
+                            <span class="plan-meta"><span class="plan-date">{{ p.date }}</span>{{ p.content }}<br>
+                                <small>{{ p.student_id or "全体学生" }}</small></span>
+                        </label>
+                        {% else %}
+                        <div class="plan-none">暂无计划，请先在左侧「新增工作计划」添加</div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="quick-add" style="margin-top:1rem">
+                    <div class="form-group" style="margin-bottom:0.75rem">
+                        <label>评审模式</label>
+                        <select name="eval_mode">
+                            <option value="diff">A · 当日变更评审</option>
+                            <option value="full">B · 全项目代码审核</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0.75rem">
+                        <label>评测范围</label>
+                        <select name="scope">
+                            <option value="missing">仅未评测</option>
+                            <option value="all">全部重评</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:0">
+                    <label>抽样人数（留空 = 全部学生）</label>
+                    <input type="number" name="sample_size" min="1" placeholder="如：5">
+                </div>
+            </form>
+
+            <div class="quick-go" style="margin-top:1rem">
+                <button type="button" class="btn btn-primary" id="eval-start-btn">▶ 开始评测</button>
+            </div>
+
+            <div class="progress-zone" id="progress-zone" hidden>
+                <div class="progress-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
+                <div class="progress-label" id="progress-label">准备中…</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var pid = {{ project.id }};
+    var FORM_FIELD_MAP = { eval_mode: "eval_mode", scope: "only_missing", sample_size: "sample_size" };
+
+    document.getElementById("eval-form").addEventListener("submit", function (e) { e.preventDefault(); });
+
+    function selectedPlan() {
+        var checked = document.querySelector('input[name="plan"]:checked');
+        return checked ? checked.value : "";
+    }
+
+    document.getElementById("eval-start-btn").addEventListener("click", function () {
+        var form = document.getElementById("eval-form");
+        var body = new URLSearchParams();
+        body.append("eval_mode", form.elements["eval_mode"].value);
+        body.append("only_missing", form.elements["scope"].value === "all" ? "0" : "1");
+        var sample = form.elements["sample_size"].value.trim();
+        if (sample) body.append("sample_size", sample);
+        var planVal = selectedPlan();
+        if (planVal) body.append("plan_id", planVal);
+
+        var zone = document.getElementById("progress-zone");
+        zone.hidden = false;
+        document.getElementById("progress-label").textContent = "提交评测任务…";
+
+        fetch("/projects/" + pid + "/run-eval", {
+            method: "POST", body: body, headers: {"Content-Type": "application/x-www-form-urlencoded"}
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (!d.job_id) { document.getElementById("progress-label").textContent = "评测启动失败，请重试"; return; }
+            var timer = setInterval(function () {
+                fetch("/eval-progress/" + d.job_id).then(function (r) { return r.json(); }).then(function (p) {
+                    var bar = document.getElementById("progress-bar");
+                    if (p.total > 0) { bar.style.width = Math.round(p.done / p.total * 100) + "%"; }
+                    var label = "状态：" + (p.status === "syncing" ? "同步代码" : p.status === "scoring" ? "AI 评分" : p.status);
+                    if (p.current) label += " · " + p.current;
+                    if (p.done !== undefined && p.total !== undefined) label += "（" + p.done + "/" + p.total + "）";
+                    document.getElementById("progress-label").textContent = label;
+                    if (p.status === "finished" || p.status === "done") {
+                        clearInterval(timer);
+                        window.location.href = "/projects/" + pid + "/assessments";
+                    } else if (p.status === "error") {
+                        clearInterval(timer);
+                        document.getElementById("progress-label").textContent = "评测出错：" + (p.error || "未知错误");
+                    }
+                });
+            }, 3000);
+        }).catch(function (e) {
+            document.getElementById("progress-label").textContent = "请求失败: " + e;
+        });
+    });
+})();
+</script>
+{% endblock %}

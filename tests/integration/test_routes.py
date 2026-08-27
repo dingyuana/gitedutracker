@@ -399,6 +399,36 @@ class TestPostRunToday:
         _, args, kwargs = mock_start.mock_calls[0]
         assert kwargs.get("plan_id") is None
 
+    def test_project_eval_endpoint_passes_sample_size(self, app, seed_data):
+        with patch("app.api.routes.start_eval_job") as mock_start:
+            mock_start.return_value = "job123"
+            resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": str(seed_data['target']),
+                "eval_mode": "diff",
+                "only_missing": "1",
+                "sample_size": "5",
+            })
+        assert resp.status_code == 200
+        _, args, kwargs = mock_start.mock_calls[0]
+        assert kwargs.get("sample_size") == 5
+
+    def test_project_eval_page_lists_all_plans_in_picker(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}/eval")
+        assert resp.status_code == 200
+        assert "完成登录模块" in resp.text
+        assert "全部计划" in resp.text
+        assert 'name="plan" value="' + str(seed_data['plan_all'].id) + '"' in resp.text
+        assert 'name="content"' in resp.text
+
+    def test_project_eval_page_has_quick_add_plan_form(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}/eval")
+        assert 'action="/plans" method="POST"' in resp.text
+        assert f'value="{seed_data["p1"].id}"' in resp.text
+        assert 'name="date"' in resp.text
+
+    def test_project_eval_nonexistent_project_returns_404(self, app):
+        assert app.get("/projects/9999/eval").status_code == 404
+
     def test_project_plans_endpoint_returns_plans_for_date(self, app, seed_data):
         resp = app.get(
             f"/projects/{seed_data['p1'].id}/plans?date={seed_data['target']}",

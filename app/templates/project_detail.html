@@ -26,7 +26,7 @@
         <button type="submit" class="btn btn-small btn-success">完成</button>
     </form>
     {% endif %}
-    <button type="button" class="btn btn-primary eval-btn">评测</button>
+    <a href="/projects/{{ project.id }}/eval" class="btn btn-primary">评测</a>
     <a href="/" class="btn btn-small">返回看板</a>
 </div>
 
@@ -84,82 +84,4 @@
         <div class="card-action"><span class="btn btn-small">查看 →</span></div>
     </a>
 </div>
-
-<div class="modal-overlay" id="eval-modal" hidden>
-    <div class="modal">
-        <div class="modal-header">
-            <h3>评测项目：{{ project.name }}</h3>
-            <button class="modal-close" onclick="document.getElementById('eval-modal').hidden=true">&times;</button>
-        </div>
-        <div class="modal-body">
-            <label>评测日期 <input type="date" id="eval-date-input" value="{{ today }}"></label>
-            <label>评测目标（当日计划）
-                <select id="eval-plan-input"><option value="">全部计划（不限）</option></select>
-            </label>
-            <label>评审模式
-                <select id="eval-mode-input">
-                    <option value="diff">A — 当日变更评审（读真实 diff）</option>
-                    <option value="full">B — 全项目代码审核（通读源码快照）</option>
-                </select>
-            </label>
-            <label>范围
-                <select id="eval-scope-input">
-                    <option value="missing">仅未评测</option>
-                    <option value="all">全部重评</option>
-                </select>
-            </label>
-            <label>抽样人数（留空=全部） <input type="number" id="eval-sample-input" min="1" placeholder="不限"></label>
-        </div>
-        <div class="modal-footer">
-            <button class="btn" onclick="document.getElementById('eval-modal').hidden=true">取消</button>
-            <button class="btn btn-primary" id="eval-start-btn">开始评测</button>
-        </div>
-    </div>
-</div>
-
-<script>
-(function () {
-    var pid = {{ project.id }};
-    var evalModal = document.getElementById("eval-modal");
-
-    evalModal.addEventListener("click", function (e) { if (e.target === evalModal) evalModal.hidden = true; });
-
-    document.querySelector(".eval-btn").addEventListener("click", function () {
-        var sel = document.getElementById("eval-plan-input");
-        sel.innerHTML = '<option value="">全部计划（不限）</option>';
-        fetch("/projects/" + pid + "/plans", {headers: {"Accept": "application/json"}}).then(function (r) { return r.json(); }).then(function (plans) {
-            plans.forEach(function (pl) {
-                var opt = document.createElement("option");
-                opt.value = pl.id;
-                opt.textContent = pl.date + " · " + pl.content;
-                sel.appendChild(opt);
-            });
-        }).catch(function () {});
-        evalModal.hidden = false;
-    });
-
-    document.getElementById("eval-start-btn").addEventListener("click", function () {
-        var body = new URLSearchParams();
-        body.append("date", document.getElementById("eval-date-input").value);
-        body.append("eval_mode", document.getElementById("eval-mode-input").value);
-        body.append("scope", document.getElementById("eval-scope-input").value);
-        var sample = document.getElementById("eval-sample-input").value;
-        if (sample) body.append("sample_size", sample);
-        var planVal = document.getElementById("eval-plan-input").value;
-        if (planVal) body.append("plan_id", planVal);
-        evalModal.hidden = true;
-        fetch("/projects/" + pid + "/run-eval", {
-            method: "POST", body: body, headers: {"Content-Type": "application/x-www-form-urlencoded"}
-        }).then(function (r) { return r.json(); }).then(function (d) {
-            if (!d.job_id) { alert("评测启动失败"); return; }
-            var timer = setInterval(function () {
-                fetch("/eval-progress/" + d.job_id).then(function (r) { return r.json(); }).then(function (p) {
-                    if (p.status === "done") { clearInterval(timer); window.location.href = "/projects/" + pid; }
-                    else if (p.status === "error") { clearInterval(timer); alert("评测出错，请重试"); }
-                });
-            }, 3000);
-        }).catch(function (e) { alert("请求失败: " + e); });
-    });
-})();
-</script>
 {% endblock %}
