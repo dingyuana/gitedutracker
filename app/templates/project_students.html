@@ -49,7 +49,9 @@
 </div>
 
 <div class="card">
-    <h3>学生列表（{{ students|length }} 人）</h3>
+    <h3>学生列表（{{ students|length }} 人）<a href="#" class="btn btn-small btn-danger" style="float:right" onclick="if(confirm('确定清空本组全部学生？关联的评分、活动记录将一并删除，不可恢复！')){document.getElementById('clear-form').submit()};return false;">🗑 清空全部</a>
+    <form id="clear-form" action="/projects/{{ project.id }}/students/clear" method="POST" style="display:none"></form>
+    </h3>
     {% if students %}
     <table>
         <thead><tr><th>姓名</th><th>邮箱</th><th>GitHub 仓库</th><th>操作</th></tr></thead>
@@ -69,8 +71,33 @@
                 {% endif %}
             </td>
             <td>
+                <button type="button" class="btn btn-small" onclick="toggleEdit({{ s.id }})">✏️ 编辑</button>
                 <form action="/students/{{ s.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('确定删除「{{ s.name }}」？')">
                     <button type="submit" class="btn btn-small btn-danger">删除</button>
+                </form>
+            </td>
+        </tr>
+        <tr id="edit-{{ s.id }}" class="edit-row" style="display:none">
+            <td colspan="4">
+                <form action="/students/{{ s.id }}/update" method="POST" class="form-card" style="margin:0.5rem 0;padding:0.75rem">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>姓名 *</label>
+                            <input type="text" name="name" value="{{ s.name }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>邮箱</label>
+                            <input type="email" name="email" value="{{ s.email or '' }}">
+                        </div>
+                        <div class="form-group span-all">
+                            <label>仓库地址（支持 GitHub / Gitee 完整 URL 或 owner/repo）</label>
+                            <input type="text" name="github_repo" value="{{ s.github_repo }}" required>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">💾 保存</button>
+                        <button type="button" class="btn" onclick="toggleEdit({{ s.id }})">取消</button>
+                    </div>
                 </form>
             </td>
         </tr>
@@ -81,4 +108,10 @@
     <p class="empty">暂无学生，请导入 xlsx 或手动添加</p>
     {% endif %}
 </div>
+<script>
+function toggleEdit(id) {
+    var row = document.getElementById('edit-' + id);
+    row.style.display = (row.style.display === 'none') ? '' : 'none';
+}
+</script>
 {% endblock %}

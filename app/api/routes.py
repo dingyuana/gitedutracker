@@ -3,10 +3,10 @@ import tempfile
 from datetime import date as _date
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 
 from app.database import get_session
-from app.models import Student, Project, DailyPlan, Assessment, ScoringConfig
+from app.models import Student, Project, DailyPlan, GithubActivity, Assessment, ScoringConfig
 from app.utils.export import export_daily
 from app.services.import_service import import_students
 from app.services.pipeline import run_today
@@ -82,6 +82,7 @@ def students_page(request: Request, auth_check=Depends(require_auth), session: S
 
 
 @router.post("/students", response_class=HTMLResponse)
+@router.post("/students/import", response_class=HTMLResponse)
 def import_students_page(
     request: Request,
     auth_check=Depends(require_auth),
@@ -101,7 +102,9 @@ def import_students_page(
     finally:
         import os
         os.unlink(tmp_path)
-    return RedirectResponse(url=f"/projects/{project_id}" if project_id else "/students", status_code=303)
+    if project_id:
+        return RedirectResponse(url=f"/projects/{project_id}/students", status_code=303)
+    return RedirectResponse(url="/students", status_code=303)
 
 
 @router.post("/students/add", response_class=HTMLResponse)
@@ -122,6 +125,45 @@ def add_student(
     return RedirectResponse(url=f"/projects/{project_id}" if project_id else "/", status_code=303)
 
 
+@router.post("/students/{student_id}/update", response_class=HTMLResponse)
+def update_student(
+    request: Request,
+    student_id: int,
+    auth_check=Depends(require_auth),
+    name: str = Form(...),
+    email: str = Form(""),
+    github_repo: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    student = session.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="学生不存在")
+
+    repo_raw = github_repo.strip()
+    dup = session.exec(
+        select(Student).where(Student.email == email.strip(), Student.id != student_id)
+    ).first()
+    if dup is not None:
+        raise HTTPException(status_code=400, detail="邮箱已被其他学生使用")
+
+    # 复用模型校验器：完整 URL → github_repo 规范化 + github_url 保存；owner/repo → github_url 清空
+    parsed = Student.model_validate({
+        "name": name.strip(),
+        "email": email.strip(),
+        "github_repo": repo_raw,
+    })
+    student.name = parsed.name
+    student.email = parsed.email
+    student.github_repo = parsed.github_repo
+    student.github_url = parsed.github_url
+    session.add(student)
+    session.commit()
+    return RedirectResponse(
+        url=f"/projects/{student.project_id}/students" if student.project_id else "/students",
+        status_code=303,
+    )
+
+
 @router.post("/students/{student_id}/delete", response_class=HTMLResponse)
 def delete_student(
     request: Request,
@@ -136,6 +178,50 @@ def delete_student(
     session.delete(student)
     session.commit()
     return RedirectResponse(url=f"/projects/{project_id}" if project_id else "/", status_code=303)
+
+
+def _cascade_delete_students(session: Session, students):
+    ids = [s.id for s in students]
+    if not ids:
+        return
+    # 重新查询以确保使用的是 session 中的当前对象（避免 ObjectDeletedError）
+    students_to_delete = list(session.exec(select(Student).where(Student.id.in_(ids))))
+    session.exec(delete(Assessment).where(Assessment.student_id.in_(ids)))
+    session.exec(delete(GithubActivity).where(GithubActivity.student_id.in_(ids)))
+    plans = session.exec(select(DailyPlan).where(DailyPlan.student_id.in_(ids))).all()
+    for p in plans:
+        p.student_id = None
+    for s in students_to_delete:
+        session.delete(s)
+    session.commit()
+
+
+@router.post("/projects/{project_id}/students/clear", response_class=HTMLResponse)
+def clear_project_students(
+    request: Request,
+    project_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    students = session.exec(
+        select(Student).where(Student.project_id == project_id)
+    ).all()
+    _cascade_delete_students(session, students)
+    return RedirectResponse(url=f"/projects/{project_id}/students", status_code=303)
+
+
+@router.post("/students/clear", response_class=HTMLResponse)
+def clear_all_students(
+    request: Request,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    students = session.exec(select(Student)).all()
+    _cascade_delete_students(session, students)
+    return RedirectResponse(url="/students", status_code=303)
 
 
 @router.post("/config", response_class=HTMLResponse)

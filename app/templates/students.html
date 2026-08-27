@@ -22,7 +22,13 @@
     </form>
 </div>
 <div class="card">
-    <h3>学生列表 <small style="color:#5f6368;font-size:0.85rem">共 {{ students|length }} 名学生</small></h3>
+    <h3>学生列表 <small style="color:#5f6368;font-size:0.85rem">共 {{ students|length }} 名学生</small>
+    <a href="#" class="btn btn-small btn-danger" style="float:right"
+       onclick="if(confirm('确定清空全部学生？关联的评分、活动记录将一并删除，不可恢复！')){document.getElementById('global-clear').submit()};return false;">
+       🗑 清空全部
+    </a>
+    <form id="global-clear" action="/students/clear" method="POST" style="display:none"></form>
+    </h3>
     {% if students %}
     <table>
         <thead>

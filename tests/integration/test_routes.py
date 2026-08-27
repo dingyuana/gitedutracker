@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from sqlmodel import SQLModel, create_engine, Session, select
+from sqlmodel import SQLModel, create_engine, Session, select, delete
 from app.models import (
     Student, Project, DailyPlan, GithubActivity, Assessment, ScoringConfig,
 )
@@ -821,6 +821,78 @@ class TestPlanManagement:
         assert resp.status_code == 404
 
 
+class TestPostStudentUpdate:
+
+    def test_updates_name_email_and_repo(self, app, db_session, seed_data):
+        sid = seed_data['s1'].id
+        pid = seed_data['p1'].id
+        resp = app.post(f"/students/{sid}/update", data={
+            "name": "张三丰",
+            "email": "zhangsanfeng@example.com",
+            "github_repo": "zs3/repo-new",
+        }, follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers["location"] == f"/projects/{pid}/students"
+        db_session.expire_all()
+        s = db_session.get(Student, sid)
+        assert s.name == "张三丰"
+        assert s.email == "zhangsanfeng@example.com"
+        assert s.github_repo == "zs3/repo-new"
+
+    def test_update_full_url_sets_github_url(self, app, db_session, seed_data):
+        sid = seed_data['s1'].id
+        resp = app.post(f"/students/{sid}/update", data={
+            "name": "张三",
+            "email": "zs@example.com",
+            "github_repo": "https://gitee.com/zs/gitee-car",
+        }, follow_redirects=False)
+        assert resp.status_code == 303
+        db_session.expire_all()
+        s = db_session.get(Student, sid)
+        assert s.github_repo == "zs/gitee-car"
+        assert s.github_url == "https://gitee.com/zs/gitee-car"
+
+    def test_update_owner_repo_clears_github_url(self, app, db_session, seed_data):
+        sid = seed_data['s1'].id
+        db_session.get(Student, sid).github_url = "https://github.com/zs/myrepo"
+        db_session.commit()
+        resp = app.post(f"/students/{sid}/update", data={
+            "name": "张三",
+            "email": "zs@example.com",
+            "github_repo": "zs/myrepo",
+        }, follow_redirects=False)
+        assert resp.status_code == 303
+        db_session.expire_all()
+        s = db_session.get(Student, sid)
+        assert s.github_repo == "zs/myrepo"
+        assert s.github_url is None
+
+    def test_update_email_conflict_returns_400(self, app, db_session, seed_data):
+        sid = seed_data['s1'].id
+        resp = app.post(f"/students/{sid}/update", data={
+            "name": "张三",
+            "email": "ls@example.com",  # 李四已占用
+            "github_repo": "zs/myrepo",
+        }, follow_redirects=False)
+        assert resp.status_code == 400
+        db_session.expire_all()
+        s = db_session.get(Student, sid)
+        assert s.email == "zs@example.com"  # 未变更
+
+    def test_update_nonexistent_returns_404(self, app):
+        resp = app.post("/students/9999/update", data={
+            "name": "x", "email": "x@example.com", "github_repo": "x/repo",
+        }, follow_redirects=False)
+        assert resp.status_code == 404
+
+    def test_project_students_page_has_edit_buttons(self, app, seed_data):
+        pid = seed_data['p1'].id
+        resp = app.get(f"/projects/{pid}/students")
+        assert resp.status_code == 200
+        assert f"/students/{seed_data['s1'].id}/update" in resp.text
+        assert "编辑" in resp.text
+
+
 class TestStudentsPageDisplay:
 
     def test_shows_total_count(self, app, seed_data):
@@ -871,3 +943,105 @@ class TestDeleteDayAssessments:
     def test_nonexistent_project_returns_404(self, app):
         assert app.post("/projects/9999/assessments/delete",
                         data={"date": "2026-08-26"}).status_code == 404
+
+
+class TestClearStudents:
+
+    def _seed_for_clear(self, db_session, seed_data):
+        s3 = Student(name='王五', email='ww@example.com', github_repo='ww/car',
+                     project_id=None)
+        db_session.add(s3)
+        db_session.commit()
+        db_session.refresh(s3)
+
+        from datetime import date
+        t = seed_data['target']
+        for sid in [seed_data['s1'].id, seed_data['s2'].id]:
+            db_session.add(Assessment(student_id=sid, project_id=seed_data['p1'].id,
+                                      date=t, total_score=80, status="done"))
+        db_session.add(DailyPlan(project_id=seed_data['p1'].id, date=t,
+                                 content='给s1的plan', student_id=seed_data['s1'].id))
+        db_session.add(DailyPlan(project_id=seed_data['p1'].id, date=t+timedelta(days=1),
+                                 content='给s2的plan', student_id=seed_data['s2'].id))
+        db_session.add(DailyPlan(project_id=seed_data['p1'].id, date=t+timedelta(days=1),
+                                 content='给s3的plan', student_id=s3.id))
+        db_session.commit()
+        return s3
+
+    def test_clear_project_students_cascades(self, app, db_session, seed_data):
+        s3 = self._seed_for_clear(db_session, seed_data)
+        pid = seed_data['p1'].id
+        before_students = db_session.exec(select(Student).where(Student.project_id == pid)).all()
+        assert len(before_students) == 2
+        before_asmt = db_session.exec(
+            select(Assessment).where(Assessment.project_id == pid)).all()
+        before_act = db_session.exec(
+            select(GithubActivity).where(GithubActivity.student_id.in_(
+                [s.id for s in before_students]))).all()
+        before_plans = db_session.exec(
+            select(DailyPlan).where(DailyPlan.project_id == pid)).all()
+        assert len(before_asmt) == 2
+        assert len(before_act) == 2
+        assert len(before_plans) == 4
+
+        # 在 expire_all 前保存所有 ID（expire_all 会使 seed_data 对象过期）
+        pid = seed_data['p1'].id
+        s1_id = seed_data['s1'].id
+        s2_id = seed_data['s2'].id
+        s3_id = 3
+
+        resp = app.post(f"/projects/{pid}/students/clear",
+                        data={}, follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers["location"] == f"/projects/{pid}/students"
+
+        db_session.expire_all()
+        remaining = db_session.exec(select(Student).where(Student.project_id == pid)).all()
+        assert len(remaining) == 0
+        assert db_session.get(Student, s3_id) is not None
+
+        left_asmt = db_session.exec(select(Assessment)).all()
+        assert len(left_asmt) == 0
+
+        left_act = db_session.exec(select(GithubActivity)).all()
+        assert len(left_act) == 0
+
+        left_plans = db_session.exec(select(DailyPlan).where(
+            DailyPlan.project_id == pid)).all()
+        # s1/s2 的 plan 学生引用已清空；s3 的 plan 保留（s3 不属于该项目）
+        s1_s2_plans = [p for p in left_plans if p.student_id in (s1_id, s2_id)]
+        assert len(s1_s2_plans) == 0
+        s3_plans = [p for p in left_plans if p.student_id == s3_id]
+        assert len(s3_plans) == 1
+
+    def test_clear_all_students_globs(self, app, db_session, seed_data):
+        self._seed_for_clear(db_session, seed_data)
+        before = len(db_session.exec(select(Student)).all())
+        assert before == 3
+        resp = app.post("/students/clear", data={}, follow_redirects=False)
+        assert resp.status_code == 303
+        db_session.expire_all()
+        assert len(db_session.exec(select(Student)).all()) == 0
+        assert len(db_session.exec(select(Assessment)).all()) == 0
+        assert len(db_session.exec(select(GithubActivity)).all()) == 0
+        plans = db_session.exec(select(DailyPlan)).all()
+        assert all(p.student_id is None for p in plans)
+
+    def test_clear_project_nonexistent_returns_404(self, app):
+        resp = app.post("/projects/9999/students/clear", data={},
+                        follow_redirects=False)
+        assert resp.status_code == 404
+
+    def test_clear_all_nonexistent_students_is_ok(self, app, db_session):
+        resp = app.post("/students/clear", data={}, follow_redirects=False)
+        assert resp.status_code in (200, 302, 303)
+
+    def test_project_students_page_has_clear_button(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}/students")
+        assert resp.status_code == 200
+        assert "清空全部" in resp.text
+
+    def test_students_page_has_clear_button(self, app):
+        resp = app.get("/students")
+        assert resp.status_code == 200
+        assert "清空全部" in resp.text
