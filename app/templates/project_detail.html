@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ project.name }} — 日程 — 学生 GitHub 日报追踪器{% endblock %}
+{% block title %}{{ project.name }} — 学生 GitHub 日报追踪器{% endblock %}
 {% block content %}
 <h1>
     {{ project.name }}
@@ -26,68 +26,143 @@
         <button type="submit" class="btn btn-small btn-success">完成</button>
     </form>
     {% endif %}
+    <button type="button" class="btn btn-primary eval-btn" data-project="{{ project.id }}" data-name="{{ project.name }}">评测</button>
     <a href="/" class="btn btn-small">返回看板</a>
 </div>
 
-<div class="card">
-    <h3>学生（{{ students|length }} 人）</h3>
-    {% if students %}
-    <div class="chip-row">
-        {% for s in students %}
-        <span class="chip">{{ s.name }}</span>
-        {% endfor %}
+<!-- 评测配置弹窗 -->
+<div class="modal-overlay" id="eval-modal" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <h3>评测项目：<span id="eval-modal-name"></span></h3>
+            <button type="button" class="modal-close" id="eval-modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <label>评测日期
+                <input type="date" id="eval-date-input" value="{{ today }}">
+            </label>
+            <label>评测目标（当日计划）
+                <select id="eval-plan-input">
+                    <option value="">全部计划（不限）</option>
+                </select>
+            </label>
+            <label>评审模式
+                <select id="eval-mode-input">
+                    <option value="diff">A — 当日变更评审（读真实 diff）</option>
+                    <option value="full">B — 全项目代码审核（通读源码快照）</option>
+                </select>
+            </label>
+            <label>范围
+                <select id="eval-scope-input">
+                    <option value="missing">仅未评测</option>
+                    <option value="all">全部重评</option>
+                </select>
+            </label>
+            <label>抽样人数（留空=全部）
+                <input type="number" id="eval-sample-input" min="1" placeholder="不限">
+            </label>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn" id="eval-modal-cancel">取消</button>
+            <button type="button" class="btn btn-primary" id="eval-start-btn">开始评测</button>
+        </div>
     </div>
-    {% else %}
-    <p class="empty">暂无学生，去「学生」页导入时选择本项目归属</p>
-    {% endif %}
 </div>
 
-<div class="card">
-    <h3>新增日程</h3>
-    <form action="/plans" method="POST" class="inline-form">
-        <input type="hidden" name="project_id" value="{{ project.id }}">
-        <label>日期 <input type="date" name="date" value="{{ today }}" required></label>
-        <input type="text" name="content" placeholder="当日工作计划/教程任务" required>
-        <select name="student_id">
-            <option value="">全体学生</option>
+<details class="card" open>
+    <summary>👥 学生（{{ students|length }} 人）</summary>
+    <div class="card-body">
+        <form action="/students/import" method="POST" enctype="multipart/form-data" style="margin-bottom:1rem">
+            <input type="hidden" name="project_id" value="{{ project.id }}">
+            <div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
+                <label style="margin:0">导入 xlsx
+                    <input type="file" name="file" accept=".xlsx,.xls" required>
+                </label>
+                <button type="submit" class="btn btn-primary btn-small">导入学生</button>
+            </div>
+        </form>
+        <form action="/students/add" method="POST" style="margin-bottom:1rem">
+            <input type="hidden" name="project_id" value="{{ project.id }}">
+            <div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
+                <input type="text" name="name" placeholder="姓名" required style="width:100px">
+                <input type="email" name="email" placeholder="邮箱" style="width:160px">
+                <input type="text" name="github_repo" placeholder="仓库地址 owner/repo" style="width:240px">
+                <button type="submit" class="btn btn-small">＋ 添加</button>
+            </div>
+        </form>
+        {% if students %}
+        <table>
+            <thead><tr><th>姓名</th><th>邮箱</th><th>仓库</th><th>操作</th></tr></thead>
+            <tbody>
             {% for s in students %}
-            <option value="{{ s.id }}">{{ s.name }}</option>
+                <tr>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.email or "—" }}</td>
+                    <td><small>{{ s.github_repo }}</small></td>
+                    <td>
+                        <form action="/students/{{ s.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('确定删除学生「{{ s.name }}」？')">
+                            <button type="submit" class="btn btn-small btn-danger">删除</button>
+                        </form>
+                    </td>
+                </tr>
             {% endfor %}
-        </select>
-        <button type="submit" class="btn btn-primary btn-small">添加</button>
-    </form>
-</div>
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty">暂无学生，用上方表单添加或导入 xlsx</p>
+        {% endif %}
+    </div>
+</details>
 
-<div class="card">
-    <h3>日程（{{ plans|length }} 条）</h3>
-    {% if plans %}
-    <table>
-        <thead><tr><th>日期</th><th>内容</th><th>对象</th><th>操作</th></tr></thead>
-        <tbody>
-        {% for plan in plans %}
-            <tr>
-                <td>{{ plan.date }}</td>
-                <td>{{ plan.content }}</td>
-                <td>{{ plan.student_id or "全体" }}</td>
-                <td>
-                    <a href="/plans/{{ plan.id }}/edit" class="btn btn-small">编辑</a>
-                    <form action="/plans/{{ plan.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('删除该日程？')">
-                        <button type="submit" class="btn btn-small btn-danger">删除</button>
-                    </form>
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p class="empty">暂无日程，用上方表单添加每日计划</p>
-    {% endif %}
-</div>
+<details class="card" open>
+    <summary>📅 计划（{{ plans|length }} 条）</summary>
+    <div class="card-body">
+        <form action="/plans" method="POST" class="inline-form" style="margin-bottom:1rem">
+            <input type="hidden" name="project_id" value="{{ project.id }}">
+            <div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
+                <input type="date" name="date" value="{{ today }}" required style="width:140px">
+                <input type="text" name="content" placeholder="当日工作计划/教程任务" required style="flex:1;min-width:200px">
+                <select name="student_id">
+                    <option value="">全体学生</option>
+                    {% for s in students %}
+                    <option value="{{ s.id }}">{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary btn-small">添加</button>
+            </div>
+        </form>
+        {% if plans %}
+        <table>
+            <thead><tr><th>日期</th><th>内容</th><th>对象</th><th>操作</th></tr></thead>
+            <tbody>
+            {% for plan in plans %}
+                <tr>
+                    <td>{{ plan.date }}</td>
+                    <td>{{ plan.content }}</td>
+                    <td>{{ plan.student_id or "全体" }}</td>
+                    <td>
+                        <a href="/plans/{{ plan.id }}/edit" class="btn btn-small">编辑</a>
+                        <form action="/plans/{{ plan.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('删除该日程？')">
+                            <button type="submit" class="btn btn-small btn-danger">删除</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty">暂无日程，用上方表单添加每日计划</p>
+        {% endif %}
+    </div>
+</details>
 
-<div class="card">
-    <h3>📈 每日平均分趋势</h3>
-    {{ avg_chart | safe }}
-</div>
+<details class="card">
+    <summary>📈 分数趋势</summary>
+    <div class="card-body">
+        <h4>每日平均分</h4>
+        {{ avg_chart | safe }}
+    </div>
+</details>
 
 {% if student_charts %}
 <details class="card">
@@ -108,7 +183,7 @@
 {% if assessments_by_date %}
 {% for a_date, items, plan_content in assessments_by_date %}
 <details class="card">
-    <summary>📅 {{ a_date }}（{{ items|length }} 人）{% if plan_content %} · {{ plan_content }}{% endif %}</summary>
+    <summary>📋 {{ a_date }}（{{ items|length }} 人）{% if plan_content %} · {{ plan_content }}{% endif %}</summary>
     <div class="card-body">
         <form action="/projects/{{ project.id }}/assessments/delete" method="POST" style="display:inline;margin-bottom:0.5rem"
               onsubmit="return confirm('确定删除 {{ a_date }} 的全部 {{ items|length }} 条评测记录？此操作不可恢复')">
@@ -133,7 +208,89 @@
 {% endfor %}
 {% else %}
 <div class="card">
-    <p class="empty">暂无评测记录。运行「今日评测」后，每天的分数与评语会保存在这里供查询</p>
+    <p class="empty">暂无评测记录。点击「评测」按钮开始</p>
 </div>
 {% endif %}
+
+<script>
+(function () {
+    var evalModal = document.getElementById("eval-modal");
+    var activePid = {{ project.id }};
+
+    function loadPlans() {
+        var sel = document.getElementById("eval-plan-input");
+        sel.innerHTML = '<option value="">全部计划（不限）</option>';
+        fetch("/projects/" + activePid + "/plans")
+            .then(function (r) { return r.json(); })
+            .then(function (plans) {
+                plans.forEach(function (pl) {
+                    var opt = document.createElement("option");
+                    opt.value = pl.id;
+                    opt.textContent = pl.date + " · " + pl.content;
+                    sel.appendChild(opt);
+                });
+            })
+            .catch(function () {});
+    }
+
+    document.querySelector(".eval-btn").addEventListener("click", function () {
+        document.getElementById("eval-modal-name").textContent = "{{ project.name }}";
+        loadPlans();
+        evalModal.hidden = false;
+    });
+
+    document.getElementById("eval-modal-close").addEventListener("click", function () {
+        evalModal.hidden = true;
+    });
+    document.getElementById("eval-modal-cancel").addEventListener("click", function () {
+        evalModal.hidden = true;
+    });
+    evalModal.addEventListener("click", function (e) {
+        if (e.target === evalModal) evalModal.hidden = true;
+    });
+
+    document.getElementById("eval-start-btn").addEventListener("click", function () {
+        var dateVal = document.getElementById("eval-date-input").value;
+        var modeVal = document.getElementById("eval-mode-input").value;
+        var scopeVal = document.getElementById("eval-scope-input").value;
+        var sampleVal = document.getElementById("eval-sample-input").value;
+        var planVal = document.getElementById("eval-plan-input").value;
+        var body = new URLSearchParams();
+        body.append("date", dateVal);
+        body.append("eval_mode", modeVal);
+        body.append("scope", scopeVal);
+        if (sampleVal) body.append("sample_size", sampleVal);
+        if (planVal) body.append("plan_id", planVal);
+
+        evalModal.hidden = true;
+
+        fetch("/projects/" + activePid + "/run-eval", {
+            method: "POST",
+            body: body,
+            headers: {"Content-Type": "application/x-www-form-urlencoded"}
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d.job_id) { alert("评测启动失败"); return; }
+            pollProgress(activePid, d.job_id);
+        })
+        .catch(function (e) { alert("请求失败: " + e); });
+    });
+
+    function pollProgress(pid, job_id) {
+        var url = "/eval-progress/" + job_id;
+        var timer = setInterval(function () {
+            fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+                if (d.status === "done") {
+                    clearInterval(timer);
+                    window.location.href = "/projects/" + pid;
+                } else if (d.status === "error") {
+                    clearInterval(timer);
+                    alert("评测出错，请重试");
+                }
+            });
+        }, 3000);
+    }
+})();
+</script>
 {% endblock %}

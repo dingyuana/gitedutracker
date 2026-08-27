@@ -101,7 +101,41 @@ def import_students_page(
     finally:
         import os
         os.unlink(tmp_path)
-    return RedirectResponse(url="/students", status_code=303)
+    return RedirectResponse(url=f"/projects/{project_id}" if project_id else "/students", status_code=303)
+
+
+@router.post("/students/add", response_class=HTMLResponse)
+def add_student(
+    request: Request,
+    auth_check=Depends(require_auth),
+    name: str = Form(...),
+    email: str = Form(""),
+    github_repo: str = Form(...),
+    project_id: int = Form(None),
+    session: Session = Depends(get_session),
+):
+    student = Student(name=name.strip(), email=email.strip(), github_repo=github_repo.strip())
+    if project_id:
+        student.project_id = project_id
+    session.add(student)
+    session.commit()
+    return RedirectResponse(url=f"/projects/{project_id}" if project_id else "/", status_code=303)
+
+
+@router.post("/students/{student_id}/delete", response_class=HTMLResponse)
+def delete_student(
+    request: Request,
+    student_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    student = session.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="学生不存在")
+    project_id = student.project_id
+    session.delete(student)
+    session.commit()
+    return RedirectResponse(url=f"/projects/{project_id}" if project_id else "/", status_code=303)
 
 
 @router.post("/config", response_class=HTMLResponse)

@@ -649,7 +649,7 @@ class TestProjectDetail:
         db_session.commit()
         resp = app.get(f"/projects/{seed_data['p1'].id}")
         assert resp.status_code == 200
-        assert "平均分趋势" in resp.text
+        assert "分数趋势" in resp.text
         assert "分数变化" in resp.text
         assert "<svg" in resp.text
 
