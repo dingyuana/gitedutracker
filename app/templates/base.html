@@ -380,37 +380,38 @@
             border: 2px dashed var(--border);
         }
 
-        .card-eval-config {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 0.6rem;
-            margin: 0.75rem 0 0.25rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 1px solid var(--border);
-        }
-        .eval-field {
+        .page-header {
             display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-            font-size: 0.78rem;
-            color: var(--text-muted);
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+            gap: 0.75rem;
         }
-        .eval-field input[type="date"],
-        .eval-field input[type="number"],
-        .eval-field select {
-            padding: 0.3rem 0.5rem;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            font-size: 0.85rem;
-            background: white;
+        .page-header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 700;
             color: var(--text);
-            width: 100%;
         }
-        .eval-field input:focus,
-        .eval-field select:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(26,115,232,0.1);
+
+        .project-card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+        }
+        .project-card-head h3 {
+            margin: 0;
+        }
+        .project-card-head .badge {
+            font-size: 0.75rem;
+            background: #e8f0fe;
+            color: var(--primary);
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-weight: 600;
+            white-space: nowrap;
         }
 
         .modal-overlay {
@@ -464,15 +465,19 @@
             font-weight: 500;
         }
         .modal-body input[type="text"],
-        .modal-body input[type="date"] {
+        .modal-body input[type="date"],
+        .modal-body input[type="number"],
+        .modal-body select {
             padding: 0.55rem 0.75rem;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
             font-size: 0.95rem;
             background: white;
             color: var(--text);
+            width: 100%;
         }
-        .modal-body input:focus {
+        .modal-body input:focus,
+        .modal-body select:focus {
             outline: none;
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(26,115,232,0.1);

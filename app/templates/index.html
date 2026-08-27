@@ -1,9 +1,8 @@
 {% extends "base.html" %}
 {% block title %}项目看板 — 学生 GitHub 日报追踪器{% endblock %}
 {% block content %}
-<h1>项目看板 <small style="font-size:0.9rem;color:#888">{{ today }}</small></h1>
-
-<div class="card">
+<div class="page-header">
+    <h1>项目看板</h1>
     <button type="button" class="btn btn-primary" id="new-project-btn">＋ 新建项目</button>
 </div>
 
@@ -37,12 +36,51 @@
     </div>
 </div>
 
-<h2>进行中</h2>
+<!-- 评测配置弹窗 -->
+<div class="modal-overlay" id="eval-modal" hidden>
+    <div class="modal">
+        <div class="modal-header">
+            <h3>评测项目：<span id="eval-modal-name"></span></h3>
+            <button type="button" class="modal-close" id="eval-modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <label>评测日期
+                <input type="date" id="eval-date-input" value="{{ today }}">
+            </label>
+            <label>评审模式
+                <select id="eval-mode-input">
+                    <option value="diff">当日变更评审（快）</option>
+                    <option value="full">全项目代码审核（深入）</option>
+                </select>
+            </label>
+            <label>范围
+                <select id="eval-scope-input">
+                    <option value="1">仅未测评</option>
+                    <option value="0">全部重新评测</option>
+                </select>
+            </label>
+            <label>抽样人数
+                <input type="number" id="eval-sample-input" min="1" max="200" value="" placeholder="留空=全部">
+            </label>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn" id="eval-modal-cancel">取消</button>
+            <button type="button" class="btn btn-success" id="eval-start-btn">开始评测</button>
+        </div>
+    </div>
+</div>
+
+<h2>进行中的项目</h2>
 {% if active_cards %}
 <div class="project-grid">
     {% for c in active_cards %}
     <div class="card project-card">
-        <h3><a href="/projects/{{ c.project.id }}" class="project-link">{{ c.project.name }}</a></h3>
+        <div class="project-card-head">
+            <h3><a href="/projects/{{ c.project.id }}" class="project-link">{{ c.project.name }}</a></h3>
+            {% if c.progress_pct is not none %}
+            <span class="badge">{{ c.progress_pct }}%</span>
+            {% endif %}
+        </div>
         {% if c.progress_pct is not none %}
         <div class="progress-wrap">
             <div class="progress-bar" style="width: {{ c.progress_pct }}%"></div>
@@ -65,33 +103,13 @@
                 <span style="color:#888">未评测</span>
             {% endif %}
         </div>
-        <div class="card-eval-config">
-            <label class="eval-field">评测日期
-                <input type="date" class="card-eval-date" value="{{ today }}">
-            </label>
-            <label class="eval-field">评审模式
-                <select class="card-eval-mode">
-                    <option value="diff">当日变更评审（快）</option>
-                    <option value="full">全项目代码审核（深入）</option>
-                </select>
-            </label>
-            <label class="eval-field">范围
-                <select class="card-eval-scope">
-                    <option value="1">仅未测评</option>
-                    <option value="0">全部重新评测</option>
-                </select>
-            </label>
-            <label class="eval-field">抽样人数
-                <input type="number" class="card-eval-sample" min="1" max="200" value="" placeholder="留空=全部">
-            </label>
-        </div>
         <div class="card-actions">
             <button type="button" class="btn btn-small btn-success eval-btn"
                     data-project="{{ c.project.id }}"
                     data-name="{{ c.project.name }}">评测</button>
             <a href="/projects/{{ c.project.id }}/edit" class="btn btn-small">编辑</a>
             <form action="/projects/{{ c.project.id }}/complete" method="POST" style="display:inline" onsubmit="return confirm('标记「{{ c.project.name }}」为已完成？')">
-                <button type="submit" class="btn btn-small btn-success">完成</button>
+                <button type="submit" class="btn btn-small">完成</button>
             </form>
             <form action="/projects/{{ c.project.id }}/delete" method="POST" style="display:inline" onsubmit="return confirm('确定删除项目「{{ c.project.name }}」？关联的计划和评估将一并删除')">
                 <button type="submit" class="btn btn-small btn-danger">删除</button>
@@ -109,7 +127,7 @@
 {% endif %}
 
 {% if done_cards %}
-<h2>已完成</h2>
+<h2>已完成项目</h2>
 <div class="card">
     <table>
         <tbody>
@@ -134,80 +152,105 @@
 
 <script>
 (function () {
-    var modal = document.getElementById("new-project-modal");
+    var newModal = document.getElementById("new-project-modal");
     var openBtn = document.getElementById("new-project-btn");
-    function openModal() { if (modal) modal.hidden = false; }
-    function closeModal() { if (modal) modal.hidden = true; }
-    if (openBtn) openBtn.addEventListener("click", openModal);
-    if (modal) {
-        modal.querySelectorAll("[data-close-modal]").forEach(function (el) {
-            el.addEventListener("click", closeModal);
+    function openNewModal() { if (newModal) newModal.hidden = false; }
+    function closeNewModal() { if (newModal) newModal.hidden = true; }
+    if (openBtn) openBtn.addEventListener("click", openNewModal);
+    if (newModal) {
+        newModal.querySelectorAll("[data-close-modal]").forEach(function (el) {
+            el.addEventListener("click", closeNewModal);
         });
-        modal.addEventListener("click", function (e) {
-            if (e.target === modal) closeModal();
-        });
-        document.addEventListener("keydown", function (e) {
-            if (e.key === "Escape" && !modal.hidden) closeModal();
+        newModal.addEventListener("click", function (e) {
+            if (e.target === newModal) closeNewModal();
         });
     }
+
+    var evalModal = document.getElementById("eval-modal");
+    var activePid = null;
+    var activeBtn = null;
+    var activeBox = null;
+    function openEvalModal(name, pid, btn, box) {
+        document.getElementById("eval-modal-name").textContent = name;
+        document.getElementById("eval-date-input").value = "{{ today }}";
+        activePid = pid; activeBtn = btn; activeBox = box;
+        if (evalModal) evalModal.hidden = false;
+    }
+    function closeEvalModal() { if (evalModal) evalModal.hidden = true; }
+    if (evalModal) {
+        document.getElementById("eval-modal-close").addEventListener("click", closeEvalModal);
+        document.getElementById("eval-modal-cancel").addEventListener("click", closeEvalModal);
+        evalModal.addEventListener("click", function (e) {
+            if (e.target === evalModal) closeEvalModal();
+        });
+    }
+    document.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape") return;
+        if (evalModal && !evalModal.hidden) closeEvalModal();
+        else if (newModal && !newModal.hidden) closeNewModal();
+    });
+
+    function startEval() {
+        var pid = activePid;
+        var btn = activeBtn;
+        var box = activeBox;
+        closeEvalModal();
+        var textEl = box.querySelector(".eval-progress-text");
+        var bar = box.querySelector(".progress-bar");
+        box.hidden = false;
+        textEl.textContent = "正在启动评测…";
+        bar.style.width = "5%";
+
+        var fd = new FormData();
+        fd.append("date", document.getElementById("eval-date-input").value);
+        fd.append("eval_mode", document.getElementById("eval-mode-input").value);
+        fd.append("only_missing", document.getElementById("eval-scope-input").value);
+        const ss = document.getElementById("eval-sample-input").value.trim();
+        if (ss) fd.append("sample_size", ss);
+
+        fetch("/projects/" + pid + "/run-eval", { method: "POST", body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var jobId = d.job_id;
+                btn.disabled = true;
+                btn.innerText = "评测中…";
+                var timer = setInterval(function () {
+                    fetch("/eval-progress/" + jobId)
+                        .then(function (r) { return r.json(); })
+                        .then(function (p) {
+                            if (p.total > 0) {
+                                var pct = Math.round(p.done / p.total * 100);
+                                bar.style.width = pct + "%";
+                                textEl.textContent = "已评估 " + p.done + "/" + p.total +
+                                    (p.current ? "（当前：" + p.current + "）" : "");
+                            }
+                            if (p.status === "finished") {
+                                clearInterval(timer);
+                                bar.style.width = "100%";
+                                var res = p.result || {};
+                                textEl.textContent = "✅ 完成：成功 " + (res.success || 0) +
+                                    "，失败 " + (res.failed || 0) + "，正在刷新…";
+                                setTimeout(function () { location.reload(); }, 1500);
+                            } else if (p.status === "error") {
+                                clearInterval(timer);
+                                textEl.textContent = "❌ 评测出错：" + (p.error || "");
+                                btn.disabled = false;
+                                btn.innerText = "评测";
+                            }
+                        });
+                }, 2000);
+            })
+            .catch(function () {
+                textEl.textContent = "❌ 启动失败，请重试";
+            });
+    }
+    document.getElementById("eval-start-btn").addEventListener("click", startEval);
 
     document.querySelectorAll(".eval-btn").forEach(function (btn) {
         btn.addEventListener("click", function () {
             var card = btn.closest(".project-card");
-            var pid = btn.dataset.project;
-            var box = document.getElementById("progress-" + pid);
-            var dateInput = card.querySelector(".card-eval-date");
-            var modeInput = card.querySelector(".card-eval-mode");
-            var scopeInput = card.querySelector(".card-eval-scope");
-            var sampleInput = card.querySelector(".card-eval-sample");
-            var textEl = box.querySelector(".eval-progress-text");
-            var bar = box.querySelector(".progress-bar");
-            box.hidden = false;
-            textEl.textContent = "正在启动评测…";
-            bar.style.width = "5%";
-
-            var fd = new FormData();
-            fd.append("date", dateInput ? dateInput.value : "");
-            fd.append("eval_mode", modeInput ? modeInput.value : "diff");
-            fd.append("only_missing", scopeInput ? scopeInput.value : "0");
-            const ss = sampleInput ? sampleInput.value.trim() : "";
-            if (ss) fd.append("sample_size", ss);
-
-            fetch("/projects/" + pid + "/run-eval", { method: "POST", body: fd })
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    var jobId = d.job_id;
-                    btn.disabled = true;
-                    btn.innerText = "评测中…";
-                    var timer = setInterval(function () {
-                        fetch("/eval-progress/" + jobId)
-                            .then(function (r) { return r.json(); })
-                            .then(function (p) {
-                                if (p.total > 0) {
-                                    var pct = Math.round(p.done / p.total * 100);
-                                    bar.style.width = pct + "%";
-                                    textEl.textContent = "已评估 " + p.done + "/" + p.total +
-                                        (p.current ? "（当前：" + p.current + "）" : "");
-                                }
-                                if (p.status === "finished") {
-                                    clearInterval(timer);
-                                    bar.style.width = "100%";
-                                    var res = p.result || {};
-                                    textEl.textContent = "✅ 完成：成功 " + (res.success || 0) +
-                                        "，失败 " + (res.failed || 0) + "，正在刷新…";
-                                    setTimeout(function () { location.reload(); }, 1500);
-                                } else if (p.status === "error") {
-                                    clearInterval(timer);
-                                    textEl.textContent = "❌ 评测出错：" + (p.error || "");
-                                    btn.disabled = false;
-                                    btn.innerText = "评测";
-                                }
-                            });
-                    }, 2000);
-                })
-                .catch(function () {
-                    textEl.textContent = "❌ 启动失败，请重试";
-                });
+            var box = document.getElementById("progress-" + btn.dataset.project);
+            openEvalModal(btn.dataset.name, btn.dataset.project, btn, box);
         });
     });
 })();
