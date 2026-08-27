@@ -124,7 +124,28 @@ def run_today(
         ).first()
 
         if activity is None or activity.status != "ok":
-            # No activity available, skip
+            reason = "GitHub 同步失败，无法获取代码活动数据"
+            if activity and activity.status == "failed":
+                reason = "GitHub 同步失败（仓库不存在、无权限或网络异常）"
+            assessment = session.exec(
+                select(Assessment).where(
+                    Assessment.student_id == student.id,
+                    Assessment.project_id == plan.project_id,
+                    Assessment.date == target_date,
+                )
+            ).first()
+            if assessment is None:
+                assessment = Assessment(student_id=student.id, project_id=plan.project_id, date=target_date)
+                session.add(assessment)
+            assessment.status = "failed"
+            assessment.total_score = 0
+            assessment.quality_score = 0
+            assessment.match_score = 0
+            assessment.schedule_status = "ontime"
+            assessment.comment = f"{target_date} {reason}。"
+            assessment.evaluated_at = datetime.now(timezone.utc)
+            session.commit()
+            failed_count += 1
             continue
 
         if eval_mode != "full" and activity.commits_count == 0 \
