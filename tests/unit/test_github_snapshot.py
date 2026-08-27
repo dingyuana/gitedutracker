@@ -50,7 +50,7 @@ def mock_activity_result():
 
 class TestSyncDaySuccess:
 
-    @patch("app.services.github_snapshot.fetch_activity")
+    @patch("app.services.github_snapshot.fetch_activity_for_repo")
     def test_two_students_two_snapshots(self, mock_fetch, session, students, mock_activity_result):
         from app.services.github_snapshot import sync_day
         mock_fetch.return_value = mock_activity_result
@@ -72,7 +72,7 @@ class TestSyncDaySuccess:
             assert a.loc_deletions == 10
             assert a.fetched_at is not None
 
-    @patch("app.services.github_snapshot.fetch_activity")
+    @patch("app.services.github_snapshot.fetch_activity_for_repo")
     def test_upsert_creates_new_record(self, mock_fetch, session, students, mock_activity_result):
         from app.services.github_snapshot import sync_day
         mock_fetch.return_value = mock_activity_result
@@ -85,7 +85,7 @@ class TestSyncDaySuccess:
         ).all()
         assert len(activities) == 2
 
-    @patch("app.services.github_snapshot.fetch_activity")
+    @patch("app.services.github_snapshot.fetch_activity_for_repo")
     def test_upsert_updates_existing_record(self, mock_fetch, session, students, mock_activity_result):
         from app.services.github_snapshot import sync_day
         mock_fetch.return_value = mock_activity_result
@@ -116,7 +116,7 @@ class TestSyncDaySuccess:
 
 class TestSyncDayFailure:
 
-    @patch("app.services.github_snapshot.fetch_activity")
+    @patch("app.services.github_snapshot.fetch_activity_for_repo")
     def test_one_student_failure_marks_failed(self, mock_fetch, session, students, mock_activity_result):
         from app.services.github_snapshot import sync_day
         from app.models import Student
@@ -146,7 +146,7 @@ class TestSyncDayFailure:
         assert a2.status == "failed"
         assert a2.saved_context_json is not None
 
-    @patch("app.services.github_snapshot.fetch_activity")
+    @patch("app.services.github_snapshot.fetch_activity_for_repo")
     def test_all_students_fail(self, mock_fetch, session, students):
         from app.services.github_snapshot import sync_day
         mock_fetch.side_effect = Exception("Total failure")
@@ -160,7 +160,7 @@ class TestSyncDayFailure:
         for a in activities:
             assert a.status == "failed"
 
-    @patch("app.services.github_snapshot.fetch_activity")
+    @patch("app.services.github_snapshot.fetch_activity_for_repo")
     def test_return_count_correct(self, mock_fetch, session, students, mock_activity_result):
         from app.services.github_snapshot import sync_day
         mock_fetch.side_effect = [
@@ -176,7 +176,7 @@ class TestSyncDayFailure:
 
 class TestSyncDayEmpty:
 
-    @patch("app.services.github_snapshot.fetch_activity")
+    @patch("app.services.github_snapshot.fetch_activity_for_repo")
     def test_no_students_returns_zero(self, mock_fetch, session):
         from app.services.github_snapshot import sync_day
 
@@ -200,7 +200,7 @@ class TestSyncPacing:
         session.add_all([s1, s2])
         session.commit()
 
-        with patch.object(github_snapshot, "fetch_activity", return_value={
+        with patch.object(github_snapshot, "fetch_activity_for_repo", return_value={
             "commits_count": 0, "commits": [], "prs_opened": 0,
             "prs_merged": 0, "loc_additions": 0, "loc_deletions": 0,
         }), patch.object(github_snapshot.time, "sleep") as mock_sleep:
@@ -232,7 +232,7 @@ class TestRateLimitRetry:
                 raise r
             return r
 
-        with patch.object(github_snapshot, "fetch_activity", side_effect=fake_fetch), \
+        with patch.object(github_snapshot, "fetch_activity_for_repo", side_effect=fake_fetch), \
              patch.object(github_snapshot.time, "sleep") as mock_sleep:
             count = github_snapshot.sync_day(date(2026, 8, 21), session=session)
 
@@ -249,7 +249,7 @@ class TestRateLimitRetry:
         session.add(s1)
         session.commit()
 
-        with patch.object(github_snapshot, "fetch_activity", side_effect=Exception("Repository not found")), \
+        with patch.object(github_snapshot, "fetch_activity_for_repo", side_effect=Exception("Repository not found")), \
              patch.object(github_snapshot.time, "sleep") as mock_sleep:
             github_snapshot.sync_day(date(2026, 8, 21), session=session)
 
@@ -272,7 +272,7 @@ class TestReuseOkCache:
         session.add(GithubActivity(student_id=s1.id, date=date(2026, 8, 21), status="ok", commits_count=3))
         session.commit()
 
-        with patch.object(github_snapshot, "fetch_activity") as mock_fetch:
+        with patch.object(github_snapshot, "fetch_activity_for_repo") as mock_fetch:
             count = github_snapshot.sync_day(date(2026, 8, 21), session=session)
 
         mock_fetch.assert_not_called()
@@ -290,7 +290,7 @@ class TestReuseOkCache:
         session.add(GithubActivity(student_id=s1.id, date=date(2026, 8, 21), status="failed"))
         session.commit()
 
-        with patch.object(github_snapshot, "fetch_activity", return_value={
+        with patch.object(github_snapshot, "fetch_activity_for_repo", return_value={
             "commits_count": 2, "commits": [], "prs_opened": 0,
             "prs_merged": 0, "loc_additions": 10, "loc_deletions": 2,
         }):
@@ -318,7 +318,7 @@ class TestMirrorFirstSync:
                        "loc_additions": 30, "loc_deletions": 5}
 
         with patch.object(github_snapshot, "_fetch_via_mirror", return_value=mirror_data), \
-             patch.object(github_snapshot, "fetch_activity") as mock_api:
+             patch.object(github_snapshot, "fetch_activity_for_repo") as mock_api:
             count = github_snapshot.sync_day(date(2026, 8, 21), session=session)
 
         mock_api.assert_not_called()
@@ -341,7 +341,7 @@ class TestMirrorFirstSync:
                     "prs_merged": 0, "loc_additions": 3, "loc_deletions": 1}
 
         with patch.object(github_snapshot, "_fetch_via_mirror", return_value=None), \
-             patch.object(github_snapshot, "fetch_activity", return_value=api_data):
+             patch.object(github_snapshot, "fetch_activity_for_repo", return_value=api_data):
             count = github_snapshot.sync_day(date(2026, 8, 21), session=session)
 
         assert count == 1

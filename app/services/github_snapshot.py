@@ -8,7 +8,7 @@ from typing import Optional
 from sqlmodel import Session, select
 
 from app.models import GithubActivity, Student
-from app.services.github_service import fetch_activity
+from app.services.github_service import fetch_activity, fetch_activity_for_repo
 from app.services.mirror_service import extract_day_activity as _mirror_extract
 
 SYNC_INTERVAL_SECONDS = 3.0
@@ -61,9 +61,9 @@ def sync_day(target_date: date, session: Session = None, students: list = None) 
             if activity_data is None:
                 for attempt in (1, 2):
                     try:
-                        activity_data = fetch_activity(
+                        activity_data = fetch_activity_for_repo(
                             repo=student.github_repo,
-                            date=target_date,
+                            target_date=target_date,
                         )
                         break
                     except Exception as e:

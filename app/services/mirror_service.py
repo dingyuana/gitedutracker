@@ -30,8 +30,20 @@ def _run_git(cwd: str | Path, *args: str, timeout: int = 60) -> str:
     return result.stdout.decode("utf-8", errors="replace")
 
 
+def detect_platform(repo: str) -> str:
+    """根据仓库 URL 或 owner/repo 格式判断平台: github / gitee"""
+    r = repo.strip().lower()
+    if "gitee.com" in r:
+        return "gitee"
+    return "github"
+
+
 def _to_ssh_url(repo: str) -> str:
-    """GitHub SSH over port 443 URL"""
+    """GitHub SSH over port 443 URL（Gitee 不使用此回退）"""
+    platform = detect_platform(repo)
+    if platform == "gitee":
+        return ""  # Gitee 不支持 SSH over 443
+
     cleaned = repo.strip().rstrip("/")
     if cleaned.endswith(".git"):
         cleaned = cleaned[:-4]
@@ -48,6 +60,9 @@ def _to_remote_url(repo: str) -> str:
         repo = repo[:-4]
     if repo.startswith(("http://", "https://", "git@", "/")) or repo[1:3] == ":\\":
         return repo
+    platform = detect_platform(repo)
+    if platform == "gitee":
+        return f"https://gitee.com/{repo}.git"
     return f"https://github.com/{repo}.git"
 
 
@@ -82,12 +97,14 @@ def ensure_mirror(repo: str, mirror_dir: str | None = None) -> Path:
     try:
         _run_git(path.parent, "clone", "--mirror", url, str(path), timeout=180)
     except GitMirrorError:
-        # 回退 SSH over 443（GitHub HTTPS git 可能受二级限流）
-        try:
-            ssh_url = _to_ssh_url(repo)
-            _run_git(path.parent, "clone", "--mirror", ssh_url, str(path), timeout=180)
-        except GitMirrorError as e2:
-            raise GitMirrorError(f"镜像克隆失败 {repo} (HTTPS/SSH 均失败)") from e2
+        # 回退 SSH over 443（仅 GitHub，Gitee 不使用此回退）
+        ssh_url = _to_ssh_url(repo)
+        if ssh_url:
+            try:
+                _run_git(path.parent, "clone", "--mirror", ssh_url, str(path), timeout=180)
+            except GitMirrorError as e2:
+                raise GitMirrorError(f"镜像克隆失败 {repo} (HTTPS/SSH 均失败)") from e2
+        raise
     return path
 
 

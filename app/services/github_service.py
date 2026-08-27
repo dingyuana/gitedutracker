@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 from github import Github
 from github import GithubException
 
+from app.services.mirror_service import detect_platform
+
 
 class GitHubError(Exception):
     pass
@@ -92,7 +94,6 @@ def fetch_activity(repo: str, date: date, github_token: str = None) -> dict:
     try:
         pulls = list(gh_repo.get_pulls(state="all"))
     except GithubException as e:
-        # PR 数据为辅助指标：拉取失败（限流/权限）不致命，置零继续
         import logging
         logging.getLogger(__name__).warning("PR 拉取失败 %s: %s", repo, e)
         pulls = []
@@ -112,3 +113,80 @@ def fetch_activity(repo: str, date: date, github_token: str = None) -> dict:
         "loc_additions": total_additions,
         "loc_deletions": total_deletions,
     }
+
+
+def fetch_gitee_activity(repo: str, target_date: date) -> dict:
+    import urllib.request
+    import urllib.parse
+    import json
+    import logging
+
+    repo_normalized = _normalize_repo(repo)
+    since, until = _date_to_utc_range(target_date)
+
+    base = f"https://gitee.com/api/v5/repos/{repo_normalized}"
+    commits_url = f"{base}/commits?since={since.isoformat()}&until={until.isoformat()}&per_page=100"
+
+    try:
+        req = urllib.request.Request(commits_url)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            commits_data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise GitHubNotFoundError(f"Gitee 仓库不存在: {repo}") from e
+        raise GitHubError(f"Gitee API error: {e.code} {e.reason}") from e
+    except Exception as e:
+        raise GitHubError(f"Gitee 请求失败: {e}") from e
+
+    commits = []
+    total_additions = 0
+    total_deletions = 0
+
+    for c in (commits_data if isinstance(commits_data, list) else []):
+        sha = c.get("sha", "")
+        message = c.get("commit", {}).get("message", "")
+        stats = c.get("commit", {}).get("stats", {})
+        additions = stats.get("additions", 0)
+        deletions = stats.get("deletions", 0)
+        total_additions += additions
+        total_deletions += deletions
+        commits.append({
+            "sha": sha[:10],
+            "message": message.splitlines()[0] if message else "",
+            "additions": additions,
+            "deletions": deletions,
+            "files": 0,
+        })
+
+    prs_url = f"{base}/pulls?state=all&per_page=100"
+    prs_opened = 0
+    prs_merged = 0
+    try:
+        req = urllib.request.Request(prs_url)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            prs_data = json.loads(resp.read().decode())
+        for p in (prs_data if isinstance(prs_data, list) else []):
+            state = p.get("state", "")
+            merged = p.get("merged", False)
+            if merged:
+                prs_merged += 1
+            elif state == "opened":
+                prs_opened += 1
+    except Exception:
+        logging.getLogger(__name__).warning("Gitee PR 拉取失败 %s", repo)
+
+    return {
+        "commits_count": len(commits),
+        "commits": commits,
+        "prs_opened": prs_opened,
+        "prs_merged": prs_merged,
+        "loc_additions": total_additions,
+        "loc_deletions": total_deletions,
+    }
+
+
+def fetch_activity_for_repo(repo: str, target_date: date, github_token: str = None) -> dict:
+    platform = detect_platform(repo)
+    if platform == "gitee":
+        return fetch_gitee_activity(repo, target_date)
+    return fetch_activity(repo, target_date, github_token)
