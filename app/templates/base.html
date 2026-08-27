@@ -123,6 +123,38 @@
         .card:hover {
             box-shadow: var(--shadow-hover);
         }
+
+        details.card {
+            margin-bottom: 1.25rem;
+        }
+        details.card > summary {
+            list-style: none;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+        details.card > summary::-webkit-details-marker { display: none; }
+        details.card > summary::before {
+            content: "▸";
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            transition: transform 0.15s ease;
+            flex-shrink: 0;
+        }
+        details.card[open] > summary::before {
+            transform: rotate(90deg);
+        }
+        details.card > summary:hover {
+            color: var(--primary);
+        }
+        details.card > .card-body {
+            padding-top: 0.75rem;
+        }
         
         .btn {
             display: inline-flex;

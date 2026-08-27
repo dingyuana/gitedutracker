@@ -90,21 +90,24 @@
 </div>
 
 {% if student_charts %}
-<div class="card">
-    <h3>👤 学生分数变化（{{ student_charts|length }} 人）</h3>
-    <div class="chart-grid">
-        {% for sc in student_charts %}
-        <div class="chart-item">
-            {{ sc.chart | safe }}
-            <div class="chart-meta">已评 {{ sc.count }} 天</div>
+<details class="card">
+    <summary>👤 学生分数变化（{{ student_charts|length }} 人）</summary>
+    <div class="card-body">
+        <div class="chart-grid">
+            {% for sc in student_charts %}
+            <div class="chart-item">
+                {{ sc.chart | safe }}
+                <div class="chart-meta">已评 {{ sc.count }} 天</div>
+            </div>
+            {% endfor %}
         </div>
-        {% endfor %}
     </div>
-</div>
+</details>
 {% endif %}
 
-<div class="card">
-    <h3>评测记录（分数与评语）</h3>
+<details class="card" {% if assessments_by_date %}open{% endif %}>
+    <summary>评测记录（分数与评语）</summary>
+    <div class="card-body">
     {% if assessments_by_date %}
         {% for a_date, items in assessments_by_date %}
         <h4>
@@ -131,5 +134,6 @@
     {% else %}
     <p class="empty">暂无评测记录。运行「今日评测」后，每天的分数与评语会保存在这里供查询</p>
     {% endif %}
-</div>
+    </div>
+</details>
 {% endblock %}
