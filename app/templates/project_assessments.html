@@ -17,7 +17,7 @@
             <button type="submit" class="btn btn-small btn-danger">删除当日记录</button>
         </form>
         <table>
-            <thead><tr><th>学生</th><th>状态</th><th>总分</th><th>AI 评语</th></tr></thead>
+            <thead><tr><th>学生</th><th>状态</th><th>总分</th><th>AI 评语</th><th>操作</th></tr></thead>
             <tbody>
             {% for item in items %}
             <tr{% if item.status == 'failed' %} style="opacity:0.6"{% endif %}>
@@ -25,6 +25,12 @@
                 <td>{% if item.status == 'failed' %}<span style="color:#d93025">❌ 失败</span>{% else %}✅{% endif %}</td>
                 <td><strong>{{ item.total_score if item.total_score is not none else "—" }}</strong></td>
                 <td class="comment-cell">{{ item.comment or "—" }}</td>
+                <td>
+                    <form action="/projects/{{ project.id }}/assessments/{{ item.id }}/delete" method="POST" style="display:inline"
+                          onsubmit="return confirm('确定删除 {{ item.student_name }} 的这条评测记录？此操作不可恢复')">
+                        <button type="submit" class="btn btn-small btn-danger">删除</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
             </tbody>

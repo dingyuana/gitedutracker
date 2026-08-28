@@ -965,6 +965,49 @@ class TestDeleteDayAssessments:
                         data={"date": "2026-08-26"}).status_code == 404
 
 
+class TestDeleteSingleAssessment:
+
+    def _seed_two(self, db_session, seed_data):
+        from datetime import timedelta
+        t = seed_data['target']
+        a1 = Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                        date=t, total_score=70, status="done")
+        a2 = Assessment(student_id=seed_data['s2'].id, project_id=seed_data['p1'].id,
+                        date=t, total_score=80, status="done")
+        db_session.add_all([a1, a2])
+        db_session.commit()
+        db_session.refresh(a1)
+        db_session.refresh(a2)
+        return a1, a2
+
+    def test_deletes_only_specified_assessment(self, app, db_session, seed_data):
+        a1, a2 = self._seed_two(db_session, seed_data)
+        a1_id = a1.id
+        a2_id = a2.id
+        resp = app.post(f"/projects/{seed_data['p1'].id}/assessments/{a1_id}/delete",
+                        follow_redirects=False)
+        assert resp.status_code == 303
+        db_session.expire_all()
+        assert db_session.get(Assessment, a1_id) is None
+        assert db_session.get(Assessment, a2_id) is not None
+
+    def test_delete_nonexistent_assessment_returns_404(self, app, seed_data):
+        resp = app.post(f"/projects/{seed_data['p1'].id}/assessments/9999/delete",
+                        follow_redirects=False)
+        assert resp.status_code == 404
+
+    def test_delete_nonexistent_project_returns_404(self, app, seed_data):
+        resp = app.post("/projects/9999/assessments/9999/delete", follow_redirects=False)
+        assert resp.status_code == 404
+
+    def test_assessments_page_has_per_row_delete_button(self, app, db_session, seed_data):
+        a1, a2 = self._seed_two(db_session, seed_data)
+        resp = app.get(f"/projects/{seed_data['p1'].id}/assessments")
+        assert resp.status_code == 200
+        assert f"/assessments/{a1.id}/delete" in resp.text
+        assert f"/assessments/{a2.id}/delete" in resp.text
+
+
 class TestClearStudents:
 
     def _seed_for_clear(self, db_session, seed_data):

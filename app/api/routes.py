@@ -426,6 +426,7 @@ def _load_assessments(session, project_id):
             continue
         student = session.get(Student, a.student_id)
         by_date.setdefault(a.date, []).append({
+            "id": a.id,
             "student_name": student.name if student else f"#{a.student_id}",
             "total_score": a.total_score,
             "comment": a.comment,
@@ -940,6 +941,24 @@ def delete_day_assessments(
         session.delete(a)
     session.commit()
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/assessments/{assessment_id}/delete")
+def delete_single_assessment(
+    project_id: int,
+    assessment_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    assessment = session.get(Assessment, assessment_id)
+    if assessment is None or assessment.project_id != project_id:
+        raise HTTPException(status_code=404, detail="评测记录不存在")
+    session.delete(assessment)
+    session.commit()
+    return RedirectResponse(url=f"/projects/{project_id}/assessments", status_code=303)
 
 
 @router.post("/api/login", response_class=JSONResponse)
