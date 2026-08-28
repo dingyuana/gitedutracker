@@ -102,4 +102,28 @@ class TestSmtpConfigEffectiveSettings:
         save_smtp_config(session, smtp_host="smtp.b.com", smtp_user="u2")
         rows = session.exec(select(SmtpConfig)).all()
         assert len(rows) == 1
-        assert rows[0].smtp_host == "smtp.b.com"
+
+    def test_qq_email_auto_infers_host_port(self, session):
+        from app.services.settings_service import save_smtp_config, get_effective_settings
+        save_smtp_config(session, smtp_user="12345678@qq.com", smtp_pass="auth-code")
+        s = get_effective_settings(session)
+        assert s.smtp_host == "smtp.qq.com"
+        assert s.smtp_port == 587
+        assert s.smtp_user == "12345678@qq.com"
+        assert s.smtp_from == "12345678@qq.com"
+
+    def test_163_email_auto_infers_host_port(self, session):
+        from app.services.settings_service import save_smtp_config, get_effective_settings
+        save_smtp_config(session, smtp_user="user@163.com", smtp_pass="auth-code")
+        s = get_effective_settings(session)
+        assert s.smtp_host == "smtp.163.com"
+        assert s.smtp_port == 587
+        assert s.smtp_from == "user@163.com"
+
+    def test_explicit_host_overrides_inference(self, session):
+        from app.services.settings_service import save_smtp_config, get_effective_settings
+        save_smtp_config(session, smtp_user="user@qq.com", smtp_pass="p",
+                         smtp_host="custom.smtp.com", smtp_port=999)
+        s = get_effective_settings(session)
+        assert s.smtp_host == "custom.smtp.com"
+        assert s.smtp_port == 999

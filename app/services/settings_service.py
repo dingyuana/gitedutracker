@@ -37,6 +37,26 @@ def get_llm_config(session: Session) -> LlmConfig | None:
     return session.get(LlmConfig, 1)
 
 
+_SMTP_DOMAIN_MAP = {
+    "qq.com": ("smtp.qq.com", 587),
+    "163.com": ("smtp.163.com", 587),
+    "126.com": ("smtp.126.com", 587),
+    "gmail.com": ("smtp.gmail.com", 587),
+    "outlook.com": ("smtp-mail.outlook.com", 587),
+    "foxmail.com": ("smtp.qq.com", 587),
+}
+
+
+def infer_smtp_settings(email: str, explicit_host: str = "",
+                        explicit_port: int | None = None) -> tuple[str, int]:
+    """根据邮箱地址推断 SMTP host/port；显式传入的 host/port 优先。"""
+    if explicit_host.strip():
+        return explicit_host.strip(), explicit_port or 587
+    domain = (email.strip() or "").split("@")[-1].lower()
+    host, port = _SMTP_DOMAIN_MAP.get(domain, (f"smtp.{domain}", 587))
+    return host, explicit_port or port
+
+
 def save_smtp_config(
     session: Session,
     smtp_host: str = "",
@@ -50,16 +70,15 @@ def save_smtp_config(
         row = SmtpConfig(id=1)
         session.add(row)
 
-    if smtp_host.strip():
-        row.smtp_host = smtp_host.strip()
-    if smtp_port:
-        row.smtp_port = int(smtp_port)
+    user = smtp_user.strip() or (row.smtp_user or "")
+    host, port = infer_smtp_settings(user, smtp_host, smtp_port)
+    row.smtp_host = host
+    row.smtp_port = port
     if smtp_user.strip():
-        row.smtp_user = smtp_user.strip()
+        row.smtp_user = user
     if smtp_pass.strip():
         row.smtp_pass = smtp_pass.strip()
-    if smtp_from.strip():
-        row.smtp_from = smtp_from.strip()
+    row.smtp_from = smtp_from.strip() or user
 
     from datetime import datetime, timezone
     row.updated_at = datetime.now(timezone.utc)
