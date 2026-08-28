@@ -176,7 +176,9 @@ def _run_today(
 
         if eval_mode != "full" and activity.commits_count == 0 \
                 and (activity.loc_additions + activity.loc_deletions) == 0:
-            empty_comment = f"{target_date} 无代码提交，当日工作为空。"
+            empty_comment = (f"{target_date} 今天没有看到你的代码提交。没关系的，有时候是在思考、"
+                             f"调试或者遇到了困难。如果有什么问题或卡住了，随时可以告诉我，"
+                             f"我们一起分析解决，别灰心，加油！")
             assessment = session.exec(
                 select(Assessment).where(
                     Assessment.student_id == student.id,

@@ -682,7 +682,7 @@ class TestEmptyDayShortCircuit:
         for a in session.exec(select(Assessment).where(Assessment.date == target)).all():
             assert a.status == "done"
             assert a.total_score == 0
-            assert "工作为空" in (a.comment or "")
+            assert "困难" in (a.comment or "") or "遇到" in (a.comment or "") or "别灰心" in (a.comment or "")
 
 
 class TestLLMTimeoutResilience:

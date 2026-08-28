@@ -119,3 +119,13 @@ class LlmConfig(SQLModel, table=True):
     llm_model: Optional[str] = None
     llm_context_max_chars: Optional[int] = None
     updated_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SmtpConfig(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_pass: Optional[str] = None
+    smtp_from: Optional[str] = None
+    updated_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))

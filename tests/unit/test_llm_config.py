@@ -56,3 +56,50 @@ class TestLlmConfigEffectiveSettings:
         save_llm_config(session, llm_model="b")
         rows = session.exec(select(LlmConfig)).all()
         assert len(rows) == 1
+
+
+class TestSmtpConfigEffectiveSettings:
+
+    def test_db_overrides_env(self, session):
+        from app.services.settings_service import get_effective_settings, save_smtp_config
+        save_smtp_config(
+            session,
+            smtp_host="smtp.qq.com",
+            smtp_port=465,
+            smtp_user="user@qq.com",
+            smtp_pass="auth-code",
+            smtp_from="user@qq.com",
+        )
+        s = get_effective_settings(session)
+        assert s.smtp_host == "smtp.qq.com"
+        assert s.smtp_port == 465
+        assert s.smtp_user == "user@qq.com"
+        assert s.smtp_pass == "auth-code"
+        assert s.smtp_from == "user@qq.com"
+
+    def test_blank_fields_keep_previous(self, session):
+        from app.services.settings_service import save_smtp_config, get_effective_settings
+        save_smtp_config(session, smtp_host="smtp.qq.com", smtp_user="u@qq.com", smtp_pass="p1")
+        save_smtp_config(session, smtp_host="smtp.163.com", smtp_user="", smtp_pass="")
+        s = get_effective_settings(session)
+        assert s.smtp_host == "smtp.163.com"
+        assert s.smtp_user == "u@qq.com"
+        assert s.smtp_pass == "p1"
+
+    def test_no_db_row_falls_back_to_env(self, session):
+        from app.services.settings_service import get_effective_settings
+        from app.config import get_settings
+        env = get_settings()
+        s = get_effective_settings(session)
+        assert s.smtp_host == env.smtp_host
+        assert s.smtp_port == env.smtp_port
+
+    def test_smtp_upsert_single_row(self, session):
+        from sqlmodel import select
+        from app.models import SmtpConfig
+        from app.services.settings_service import save_smtp_config
+        save_smtp_config(session, smtp_host="smtp.a.com", smtp_user="u1")
+        save_smtp_config(session, smtp_host="smtp.b.com", smtp_user="u2")
+        rows = session.exec(select(SmtpConfig)).all()
+        assert len(rows) == 1
+        assert rows[0].smtp_host == "smtp.b.com"

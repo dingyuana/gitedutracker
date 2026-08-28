@@ -714,7 +714,7 @@ def config_page(request: Request, auth_check=Depends(require_auth), session: Ses
     if config is None:
         from app.services.config_seed import seed_config
         config = seed_config(session)
-    from app.services.settings_service import get_llm_config
+    from app.services.settings_service import get_llm_config, get_smtp_config
     from app.config import get_settings
     llm_row = get_llm_config(session)
     env = get_settings()
@@ -724,10 +724,19 @@ def config_page(request: Request, auth_check=Depends(require_auth), session: Ses
         "llm_context_max_chars": (llm_row.llm_context_max_chars if llm_row and llm_row.llm_context_max_chars else env.llm_context_max_chars),
         "has_api_key": bool((llm_row.llm_api_key if llm_row else "") or env.llm_api_key),
     }
+    smtp_row = get_smtp_config(session)
+    smtp_current = {
+        "smtp_host": (smtp_row.smtp_host if smtp_row and smtp_row.smtp_host else env.smtp_host),
+        "smtp_port": (smtp_row.smtp_port if smtp_row and smtp_row.smtp_port else env.smtp_port),
+        "smtp_user": (smtp_row.smtp_user if smtp_row and smtp_row.smtp_user else env.smtp_user),
+        "smtp_from": (smtp_row.smtp_from if smtp_row and smtp_row.smtp_from else env.smtp_from),
+        "has_password": bool((smtp_row.smtp_pass if smtp_row else "") or env.smtp_pass),
+    }
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "config.html", {
         "config": config,
         "llm": llm_current,
+        "smtp": smtp_current,
     })
 
 
@@ -748,6 +757,29 @@ def save_llm_config_page(
         llm_base_url=llm_base_url,
         llm_api_key=llm_api_key,
         llm_context_max_chars=int(llm_context_max_chars) if llm_context_max_chars.strip().isdigit() else None,
+    )
+    return RedirectResponse(url="/config", status_code=303)
+
+
+@router.post("/config/smtp", response_class=HTMLResponse)
+def save_smtp_config_page(
+    request: Request,
+    auth_check=Depends(require_auth),
+    smtp_host: str = Form(""),
+    smtp_port: str = Form(""),
+    smtp_user: str = Form(""),
+    smtp_pass: str = Form(""),
+    smtp_from: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    from app.services.settings_service import save_smtp_config
+    save_smtp_config(
+        session,
+        smtp_host=smtp_host,
+        smtp_port=int(smtp_port) if smtp_port.strip().isdigit() else None,
+        smtp_user=smtp_user,
+        smtp_pass=smtp_pass,
+        smtp_from=smtp_from,
     )
     return RedirectResponse(url="/config", status_code=303)
 

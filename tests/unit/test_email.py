@@ -136,7 +136,7 @@ def _decode_email_body(msg_str):
 
 class TestSendDailyComments:
 
-    @patch('app.services.email_service.get_settings')
+    @patch('app.services.email_service.get_effective_settings')
     @patch('app.services.email_service.smtplib.SMTP')
     def test_sends_two_emails_for_two_students(self, mock_smtp_cls, mock_get_settings, session, seed_done_assessments, mock_settings):
         mock_get_settings.return_value = mock_settings
@@ -161,7 +161,7 @@ class TestSendDailyComments:
             assert 'GitHub 日报' in body or 'GitHub' in body
             assert str(seed_done_assessments['target']) in body
 
-    @patch('app.services.email_service.get_settings')
+    @patch('app.services.email_service.get_effective_settings')
     @patch('app.services.email_service.smtplib.SMTP')
     def test_email_body_contains_encouraging_opening_and_suggestions(self, mock_smtp_cls, mock_get_settings, session, seed_done_assessments, mock_settings):
         mock_get_settings.return_value = mock_settings
@@ -179,9 +179,14 @@ class TestSendDailyComments:
         assert len(bodies) == 2
         full_body = '\n'.join(bodies)
         assert '鼓励' in full_body or '加油' in full_body or '表现' in full_body
-        assert '总分' in full_body or '分' in full_body
+        # 邮件不含分数：无总分/平均分等分数汇总
+        assert '总分' not in full_body
+        assert '平均分' not in full_body
+        assert 'score' not in full_body.lower()
+        # 但包含评语
+        assert '表现良好' in full_body or '还需努力' in full_body or '优秀' in full_body
 
-    @patch('app.services.email_service.get_settings')
+    @patch('app.services.email_service.get_effective_settings')
     @patch('app.services.email_service.smtplib.SMTP')
     def test_smtp_failure_logs_error_does_not_raise(self, mock_smtp_cls, mock_get_settings, session, seed_done_assessments, mock_settings):
         mock_get_settings.return_value = mock_settings
@@ -201,7 +206,7 @@ class TestSendDailyComments:
         for a in assessments:
             assert a.email_sent is False
 
-    @patch('app.services.email_service.get_settings')
+    @patch('app.services.email_service.get_effective_settings')
     @patch('app.services.email_service.smtplib.SMTP')
     def test_already_sent_assessments_are_skipped(self, mock_smtp_cls, mock_get_settings, session, seed_done_assessments, mock_settings):
         mock_get_settings.return_value = mock_settings
@@ -223,7 +228,7 @@ class TestSendDailyComments:
         assert sent_assessment is not None
         assert sent_assessment.email_sent is True
 
-    @patch('app.services.email_service.get_settings')
+    @patch('app.services.email_service.get_effective_settings')
     @patch('app.services.email_service.smtplib.SMTP')
     def test_same_student_multiple_assessments_aggregated_to_one_email(self, mock_smtp_cls, mock_get_settings, session, seed_done_assessments, mock_settings):
         mock_get_settings.return_value = mock_settings
@@ -242,7 +247,7 @@ class TestSendDailyComments:
         for addr, count in call_recipients.items():
             assert count == 1, f"Expected 1 email for {addr}, got {count}"
 
-    @patch('app.services.email_service.get_settings')
+    @patch('app.services.email_service.get_effective_settings')
     @patch('app.services.email_service.smtplib.SMTP')
     def test_email_sent_marked_true_after_success(self, mock_smtp_cls, mock_get_settings, session, seed_done_assessments, mock_settings):
         mock_get_settings.return_value = mock_settings
@@ -260,7 +265,7 @@ class TestSendDailyComments:
         ).all()
         assert len(unsent) == 0
 
-    @patch('app.services.email_service.get_settings')
+    @patch('app.services.email_service.get_effective_settings')
     @patch('app.services.email_service.smtplib.SMTP')
     def test_retry_on_smtp_failure(self, mock_smtp_cls, mock_get_settings, session, seed_done_assessments, mock_settings):
         mock_get_settings.return_value = mock_settings

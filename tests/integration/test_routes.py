@@ -535,6 +535,48 @@ class TestPostConfig:
         assert 'name="llm_model"' in resp.text
         assert 'action="/config/llm"' in resp.text
 
+    def test_config_page_shows_smtp_section(self, app):
+        resp = app.get("/config")
+        assert resp.status_code == 200
+        assert "邮件发送设置" in resp.text
+        assert 'name="smtp_host"' in resp.text
+        assert 'name="smtp_port"' in resp.text
+        assert 'action="/config/smtp"' in resp.text
+
+    def test_post_smtp_config_saves(self, app, db_session):
+        from app.models import SmtpConfig
+        resp = app.post("/config/smtp", data={
+            "smtp_host": "smtp.qq.com",
+            "smtp_port": "465",
+            "smtp_user": "sender@qq.com",
+            "smtp_pass": "auth-code-123",
+            "smtp_from": "sender@qq.com",
+        })
+        assert resp.status_code in (200, 302, 303)
+        db_session.expire_all()
+        row = db_session.get(SmtpConfig, 1)
+        assert row is not None
+        assert row.smtp_host == "smtp.qq.com"
+        assert row.smtp_port == 465
+        assert row.smtp_user == "sender@qq.com"
+        assert row.smtp_pass == "auth-code-123"
+
+    def test_post_blank_smtp_password_keeps_old(self, app, db_session):
+        from app.models import SmtpConfig
+        app.post("/config/smtp", data={
+            "smtp_host": "smtp.a.com", "smtp_port": "587",
+            "smtp_user": "u1@a.com", "smtp_pass": "secret-1", "smtp_from": "u1@a.com",
+        })
+        app.post("/config/smtp", data={
+            "smtp_host": "smtp.b.com", "smtp_port": "",
+            "smtp_user": "u2@b.com", "smtp_pass": "", "smtp_from": "",
+        })
+        db_session.expire_all()
+        row = db_session.get(SmtpConfig, 1)
+        assert row.smtp_host == "smtp.b.com"
+        assert row.smtp_user == "u2@b.com"
+        assert row.smtp_pass == "secret-1"
+
     def test_post_llm_config_saves(self, app, db_session):
         from app.models import LlmConfig
         resp = app.post("/config/llm", data={
