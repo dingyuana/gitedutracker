@@ -47,14 +47,17 @@ _SMTP_DOMAIN_MAP = {
 }
 
 
+_PLACEHOLDER_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0"}
+
+
 def infer_smtp_settings(email: str, explicit_host: str = "",
                         explicit_port: int | None = None) -> tuple[str, int]:
-    """根据邮箱地址推断 SMTP host/port；显式传入的 host/port 优先。"""
-    if explicit_host.strip():
-        return explicit_host.strip(), explicit_port or 587
+    """根据邮箱地址推断 SMTP host/port；显式传入的自定义 host/port 优先（占位值除外）。"""
     domain = (email.strip() or "").split("@")[-1].lower()
-    host, port = _SMTP_DOMAIN_MAP.get(domain, (f"smtp.{domain}", 587))
-    return host, explicit_port or port
+    inferred_host, inferred_port = _SMTP_DOMAIN_MAP.get(domain, (f"smtp.{domain}", 587))
+    if explicit_host.strip() and explicit_host.strip().lower() not in _PLACEHOLDER_HOSTS:
+        return explicit_host.strip(), explicit_port or inferred_port
+    return inferred_host, inferred_port
 
 
 def save_smtp_config(

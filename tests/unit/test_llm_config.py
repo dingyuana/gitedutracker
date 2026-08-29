@@ -127,3 +127,20 @@ class TestSmtpConfigEffectiveSettings:
         s = get_effective_settings(session)
         assert s.smtp_host == "custom.smtp.com"
         assert s.smtp_port == 999
+
+    def test_placeholder_localhost_host_is_ignored_for_inference(self, session):
+        from app.services.settings_service import save_smtp_config, get_effective_settings
+        save_smtp_config(session, smtp_user="12345678@qq.com", smtp_pass="auth-code",
+                         smtp_host="localhost", smtp_port=1025)
+        s = get_effective_settings(session)
+        assert s.smtp_host == "smtp.qq.com"
+        assert s.smtp_port == 587
+
+    def test_infer_smtp_settings_ignores_localhost(self):
+        from app.services.settings_service import infer_smtp_settings
+        host, port = infer_smtp_settings("user@163.com", explicit_host="localhost")
+        assert host == "smtp.163.com"
+        assert port == 587
+        host, port = infer_smtp_settings("user@qq.com", explicit_host="custom.io", explicit_port=465)
+        assert host == "custom.io"
+        assert port == 465
