@@ -557,12 +557,14 @@ class TestEvalModes:
     @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")
     @patch("app.services.pipeline.sync_day")
+    @patch("app.services.pipeline.repo_total_loc")
     @patch("app.services.pipeline.extract_snapshot")
-    def test_full_mode_passes_project_files(self, mock_snap, mock_sync_day, mock_score_student,
+    def test_full_mode_passes_project_files(self, mock_snap, mock_loc, mock_sync_day, mock_score_student,
                                             mock_send_daily, session, seed_data,
                                             mock_settings, mock_ai_response):
         from app.services.pipeline import run_today
         mock_snap.return_value = {"files": [{"path": "main.py", "content": "print(1)", "truncated": False}]}
+        mock_loc.return_value = 3390
         mock_sync_day.return_value = 1
         mock_score_student.return_value = mock_ai_response
         mock_send_daily.return_value = None
@@ -571,6 +573,7 @@ class TestEvalModes:
 
         ctx = mock_score_student.call_args[0][0]
         assert ctx.get("project_files")[0]["path"] == "main.py"
+        assert ctx.get("loc_additions") == 3390
 
     @patch("app.services.pipeline.send_daily_comments")
     @patch("app.services.pipeline.score_student")

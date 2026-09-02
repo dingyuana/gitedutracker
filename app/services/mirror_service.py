@@ -86,11 +86,11 @@ def ensure_mirror(repo: str, mirror_dir: str | None = None) -> Path:
     if path.exists():
         if (path / "HEAD").exists():
             try:
-                _run_git(path, "remote", "update", "--prune", timeout=10)
-            except GitMirrorError as e:
-                # 更新失败不影响读取历史数据，但记录以便排查网络/权限问题
+                _run_git(path, "remote", "update", "--prune", timeout=30)
+            except (GitMirrorError, subprocess.TimeoutExpired) as e:
+                # 更新失败不影响读取本地缓存的历史数据
                 logging.getLogger(__name__).warning(
-                    "镜像更新失败（继续用历史数据）%s: %s", path, e
+                    "镜像更新失败（继续用本地缓存）%s: %s", path, e
                 )
             return path
         import shutil

@@ -145,8 +145,6 @@ def _run_today_full(
             skipped_existing += 1
             continue
 
-        context = _build_full_context(student, agg)
-
         # Upsert assessment by (student_id, project_id, date, eval_type)
         assessment = session.exec(
             select(Assessment).where(
@@ -167,6 +165,37 @@ def _run_today_full(
             session.add(assessment)
 
         assessment.attempts += 1
+
+        try:
+            context = _build_full_context(student, agg)
+        except CodeExtractionError as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "代码提取失败，标记为 failed 待重试 student=%s: %s", student.name, e
+            )
+            assessment.status = "failed"
+            assessment.next_retry_at = datetime.now(timezone.utc) + timedelta(hours=2)
+            assessment.saved_context_json = json.dumps(
+                {"eval_mode": "full", "plan_content": agg.content,
+                 "student_id": student.id, "project_id": agg.project_id,
+                 "date": str(target_date)},
+                ensure_ascii=False,
+            )
+            failed_count += 1
+            details.append({
+                "student_id": student.id,
+                "student_name": student.name,
+                "project_id": agg.project_id,
+                "status": "failed",
+                "error": str(e)[:200],
+            })
+            if progress_cb:
+                try:
+                    progress_cb(scored_count + success_count + failed_count,
+                                total_to_score, student.name)
+                except Exception:
+                    pass
+            continue
 
         try:
             subscores = score_student(context, settings)
@@ -286,6 +315,10 @@ def _build_full_pairs(
     return result
 
 
+class CodeExtractionError(Exception):
+    """代码提取失败（镜像不可用/超时）。区别于「仓库真的没有代码」，禁止降级为 0 分。"""
+
+
 def _build_full_context(student, agg: _AggregatePlan) -> dict:
     context = {
         "eval_mode": "full",
@@ -302,19 +335,9 @@ def _build_full_context(student, agg: _AggregatePlan) -> dict:
     try:
         snap = extract_snapshot(repo)
         context["project_files"] = snap.get("files", [])
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(
-            "快照提取失败 student_id=%s: %s", student.id, e
-        )
-        context["project_files"] = []
-    try:
         context["loc_additions"] = repo_total_loc(repo)
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(
-            "累计代码行统计失败 student_id=%s: %s", student.id, e
-        )
+        raise CodeExtractionError(f"无法读取仓库代码 {repo}: {e}") from e
     return context
 
 

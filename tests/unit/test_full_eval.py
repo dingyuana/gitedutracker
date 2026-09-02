@@ -428,6 +428,78 @@ class TestAssessmentMigration:
                 s.commit()
 
 
+class TestFullModeCodeExtractionFailure:
+    """代码提取失败不得伪装成「学生没写代码」的 0 分 done（生产事故回归锁定）。"""
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    @patch("app.services.pipeline.repo_total_loc")
+    @patch("app.services.pipeline.extract_snapshot")
+    def test_snapshot_failure_marks_failed_not_zero_score(
+            self, mock_snap, mock_loc, mock_sync_day, mock_score, mock_send,
+            session, seed_full, mock_settings, full_ai_response):
+        from app.services.pipeline import run_today
+        mock_snap.side_effect = RuntimeError("镜像更新超时")
+        mock_loc.return_value = 3390
+        mock_score.return_value = full_ai_response
+        mock_send.return_value = None
+
+        result = run_today(seed_full['target'], session=session, eval_mode='full')
+
+        mock_score.assert_not_called()
+        assert result['success'] == 0
+        assert result['failed'] == 2
+
+        rows = session.exec(select(Assessment)).all()
+        assert len(rows) == 2
+        for a in rows:
+            assert a.status == 'failed'
+            assert a.total_score is None
+            assert a.saved_context_json is not None
+            assert a.next_retry_at is not None
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    @patch("app.services.pipeline.repo_total_loc")
+    @patch("app.services.pipeline.extract_snapshot")
+    def test_total_loc_failure_marks_failed(
+            self, mock_snap, mock_loc, mock_sync_day, mock_score, mock_send,
+            session, seed_full, mock_settings, full_ai_response, snap):
+        from app.services.pipeline import run_today
+        mock_snap.return_value = snap
+        mock_loc.side_effect = RuntimeError("镜像更新超时")
+        mock_score.return_value = full_ai_response
+        mock_send.return_value = None
+
+        result = run_today(seed_full['target'], session=session, eval_mode='full')
+
+        mock_score.assert_not_called()
+        assert result['failed'] == 2
+        assert all(a.status == 'failed' for a in session.exec(select(Assessment)).all())
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    @patch("app.services.pipeline.repo_total_loc")
+    @patch("app.services.pipeline.extract_snapshot")
+    def test_genuinely_empty_repo_still_scored(
+            self, mock_snap, mock_loc, mock_sync_day, mock_score, mock_send,
+            session, seed_full, mock_settings, full_ai_response):
+        """提取成功但仓库确实为空 → 正常评测（真 0 代码，与提取失败区分）。"""
+        from app.services.pipeline import run_today
+        mock_snap.return_value = {"files": [], "total_files_in_repo": 0}
+        mock_loc.return_value = 0
+        mock_score.return_value = full_ai_response
+        mock_send.return_value = None
+
+        result = run_today(seed_full['target'], session=session, eval_mode='full')
+
+        assert result['success'] == 2
+        assert mock_score.call_count == 2
+
+
 class TestFullAiScoringValidation:
 
     def test_full_validation_requires_beyond_and_bonus(self):
