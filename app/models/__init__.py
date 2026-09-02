@@ -97,6 +97,8 @@ class Assessment(SQLModel, table=True):
     status: str = Field(default='pending')
     attempts: int = Field(default=0)
     next_retry_at: Optional[datetime] = None
+    # 失败原因：repo_pull=仓库拉取失败(1h 重试) / llm=LLM 调用失败(2h 重试)
+    fail_reason: Optional[str] = Field(default=None, max_length=16)
     saved_context_json: Optional[str] = None
     email_sent: bool = Field(default=False)
     created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -133,3 +135,20 @@ class SmtpConfig(SQLModel, table=True):
     smtp_pass: Optional[str] = None
     smtp_from: Optional[str] = None
     updated_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class EvalSchedule(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    target_date: date
+    eval_mode: str = Field(default="diff", max_length=16)
+    project_id: Optional[int] = Field(default=None, foreign_key='project.id')
+    plan_id: Optional[int] = Field(default=None)
+    only_missing: bool = Field(default=True)
+    sample_size: Optional[int] = None
+    run_at: datetime
+    auto_send_email: bool = Field(default=False)
+    # pending=待执行 running=执行中 done=完成 cancelled=已取消 failed=执行异常
+    status: str = Field(default="pending", max_length=16)
+    result_json: Optional[str] = None
+    created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
+    executed_at: Optional[datetime] = None

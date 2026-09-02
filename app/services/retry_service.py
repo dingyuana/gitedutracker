@@ -10,8 +10,41 @@ from sqlmodel import Session, select
 
 from app.models import Assessment, ScoringConfig
 from app.services.ai_scoring_service import LLMInvalidResponse, score_student
-from app.services.scoring_engine import compute_final
+from app.services.scoring_engine import (
+    compute_final, derive_schedule_adjustment, derive_volume_score,
+)
 from app.services.settings_service import get_effective_settings
+
+
+RETRY_DELAY_REPO_PULL_HOURS = 1
+RETRY_DELAY_LLM_HOURS = 2
+MAX_RETRY_ATTEMPTS = 5
+
+
+def _find_assessment(session: Session, student_id: int, ctx_dict: dict,
+                     eval_type: str, target_date: Optional[date]):
+    q = select(Assessment).where(
+        Assessment.student_id == student_id,
+        Assessment.date == (target_date or ctx_dict.get("date")),
+        Assessment.eval_type == eval_type,
+    )
+    proj_id = ctx_dict.get("project_id")
+    if proj_id is not None:
+        q = q.where(Assessment.project_id == proj_id)
+    return session.exec(q).first()
+
+
+def arm_retry(assessment: Assessment, reason: str) -> None:
+    """按失败原因安排下次重试；超过上限则转人工处理，避免无效仓库被无限重试。"""
+    assessment.fail_reason = reason
+    if assessment.attempts >= MAX_RETRY_ATTEMPTS:
+        assessment.status = "needs_manual"
+        assessment.next_retry_at = None
+        return
+    hours = (RETRY_DELAY_REPO_PULL_HOURS if reason == "repo_pull"
+             else RETRY_DELAY_LLM_HOURS)
+    assessment.status = "failed"
+    assessment.next_retry_at = datetime.now(timezone.utc) + timedelta(hours=hours)
 
 
 def _attempt_score(
@@ -40,28 +73,30 @@ def _attempt_score(
                 config = _DefaultConfig()
 
             subscores["loc"] = ctx_dict.get("loc_additions", 0) + ctx_dict.get("loc_deletions", 0)
-            total_score = compute_final(subscores, config)
+            engine_input = {
+                "loc": subscores["loc"],
+                "volume": subscores.get("volume"),
+                "quality": subscores.get("quality_score", 0),
+                "match": subscores.get("match_score", 0),
+                "schedule_status": subscores.get("schedule_status", "ontime"),
+                "bonus": subscores.get("bonus", 0),
+            }
+            total_score = compute_final(engine_input, config)
 
-            query_date = target_date or ctx_dict.get("date")
-            proj_id = ctx_dict.get("project_id")
-            q = select(Assessment).where(
-                Assessment.student_id == student_id,
-                Assessment.date == query_date,
-                Assessment.eval_type == eval_type,
-            )
-            if proj_id is not None:
-                q = q.where(Assessment.project_id == proj_id)
-            assessment = session.exec(q).first()
+            assessment = _find_assessment(session, student_id, ctx_dict, eval_type, target_date)
             if assessment is None:
                 return False
 
             assessment.status = "done"
             assessment.quality_score = subscores.get("quality_score")
             assessment.match_score = subscores.get("match_score")
+            assessment.volume_score = derive_volume_score(engine_input, config)
             assessment.schedule_status = subscores.get("schedule_status", "ontime")
+            assessment.schedule_adjustment = derive_schedule_adjustment(engine_input, config)
             assessment.total_score = total_score
             assessment.bonus_score = subscores.get("bonus")
             assessment.comment = subscores.get("comment", "")
+            assessment.attempts += 1
             assessment.evaluated_at = datetime.now(timezone.utc)
             assessment.saved_context_json = context
 
@@ -70,21 +105,13 @@ def _attempt_score(
 
         except Exception as e:
             if attempt == max_attempts:
-                query_date = target_date or ctx_dict.get("date")
-                proj_id = ctx_dict.get("project_id")
-                q = select(Assessment).where(
-                    Assessment.student_id == student_id,
-                    Assessment.date == query_date,
-                )
-                if proj_id is not None:
-                    q = q.where(Assessment.project_id == proj_id)
-                assessment = session.exec(q).first()
+                assessment = _find_assessment(session, student_id, ctx_dict, eval_type, target_date)
                 if assessment is None:
                     return False
 
-                assessment.status = "failed"
-                assessment.next_retry_at = datetime.now(timezone.utc) + timedelta(hours=2)
+                assessment.attempts += 1
                 assessment.saved_context_json = context
+                arm_retry(assessment, "llm")
                 session.commit()
                 return False
             time.sleep(2 ** (attempt - 1))

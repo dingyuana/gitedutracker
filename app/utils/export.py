@@ -10,6 +10,12 @@ from sqlmodel import Session, select
 from app.database import engine
 from app.models import Assessment, GithubActivity, Project, Student
 
+_STATUS_CN = {'ontime': '正常', 'ahead': '超前', 'behind': '滞后'}
+
+
+def _status_cn(value):
+    return _STATUS_CN.get(value, value)
+
 
 def export_daily(target_date: date, session: Optional[Session] = None) -> bytes:
     """导出指定日期的评分表为 xlsx bytes"""
@@ -25,9 +31,12 @@ def export_daily(target_date: date, session: Optional[Session] = None) -> bytes:
             Project.name,
             GithubActivity.loc_additions,
             GithubActivity.loc_deletions,
+            Assessment.volume_score,
             Assessment.quality_score,
             Assessment.match_score,
+            Assessment.bonus_score,
             Assessment.schedule_status,
+            Assessment.schedule_adjustment,
             Assessment.total_score,
             Assessment.comment,
         )
@@ -46,10 +55,13 @@ def export_daily(target_date: date, session: Optional[Session] = None) -> bytes:
 
     columns = [
         '日期', '学生姓名', '邮箱', 'GitHub仓库', '项目名称',
-        '代码增', '代码删', '质量分', '匹配分', '进度', '总分', '评语',
+        '代码增', '代码删', '代码量分', '质量分', '匹配分', '加分',
+        '进度状态', '进度调整', '总分', '评语',
     ]
     df = pd.DataFrame(rows, columns=columns)
     df['日期'] = df['日期'].astype(str)
+    if not df.empty:
+        df['进度状态'] = df['进度状态'].map(_status_cn)
 
     buf = io.BytesIO()
     df.to_excel(buf, index=False, engine='openpyxl')
@@ -60,7 +72,7 @@ def export_project_assessments(project_id: int, session: Optional[Session] = Non
     """导出指定项目全部评测记录为多 sheet xlsx bytes。
 
     Sheet1「分数总览」：学生(行) × 日期(列) 总分矩阵 + 每行学生平均分列 + 「每日平均」行。
-    其余每个日期一个 sheet：当日各学生 质量分/匹配分/进度/总分/评语。
+    其余每个日期一个 sheet：当日各学生 代码量分/质量分/匹配分/加分/进度状态/进度调整/总分/评语。
     仅导出 status == 'done' 的记录。
     """
     if session is None:
@@ -71,9 +83,12 @@ def export_project_assessments(project_id: int, session: Optional[Session] = Non
             Assessment.date,
             Student.name,
             Assessment.total_score,
+            Assessment.volume_score,
             Assessment.quality_score,
             Assessment.match_score,
+            Assessment.bonus_score,
             Assessment.schedule_status,
+            Assessment.schedule_adjustment,
             Assessment.comment,
         )
         .join(Student, Assessment.student_id == Student.id)
@@ -88,8 +103,10 @@ def export_project_assessments(project_id: int, session: Optional[Session] = Non
         return buf.getvalue()
 
     df = pd.DataFrame(rows, columns=[
-        '日期', '学生姓名', '总分', '质量分', '匹配分', '进度', '评语',
+        '日期', '学生姓名', '总分', '代码量分', '质量分', '匹配分', '加分',
+        '进度状态', '进度调整', '评语',
     ])
+    df['进度状态'] = df['进度状态'].map(_status_cn)
 
     with pd.ExcelWriter(buf, engine='openpyxl') as writer:
         overview = df.pivot_table(index='学生姓名', columns='日期',
@@ -99,7 +116,8 @@ def export_project_assessments(project_id: int, session: Optional[Session] = Non
         overview.loc['每日平均'] = overview.mean(axis=0)
         overview.to_excel(writer, sheet_name='分数总览')
 
-        daily_cols = ['学生姓名', '质量分', '匹配分', '进度', '总分', '评语']
+        daily_cols = ['学生姓名', '代码量分', '质量分', '匹配分', '加分',
+                      '进度状态', '进度调整', '总分', '评语']
         for d in sorted(df['日期'].unique()):
             day = df[df['日期'] == d][daily_cols]
             day.to_excel(writer, sheet_name=str(d), index=False)

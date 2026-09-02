@@ -96,8 +96,32 @@ curl -X POST "http://localhost:8000/run-today?date=2025-01-15"
 1. GitHub 同步 — 获取各仓库当日 commits / PRs / LOC
 2. AI 评分 — 调用 LLM 生成四维评分（代码量/代码质量/任务匹配/进度状态）+ 四段式评语
 3. 权重算分 — 按 `ScoringConfig` 配置计算总分
-4. 发送邮件 — 向每位学生发送评估邮件
+4. 发送邮件 — 仅当显式要求时发送（默认不发，见下方「邮件发送策略」）
 5. 导出结果 — 可下载当日 xlsx
+
+### 启动方式：立即 / 定时（`EvalSchedule`）
+
+项目评测面板（`/projects/{id}/eval`）的「启动方式」有两个选项：
+
+| 选项 | 行为 |
+|------|------|
+| 立即手动开始 | 走 `start_eval_job()`，前台轮询进度条 |
+| 指定时间自动启动 | 写一条 `EvalSchedule`（`status='pending'`），**默认次日 02:00** |
+
+- `scheduler.py` 每 **1 分钟**轮询 `run_due_schedules()`，到点才执行；未到点的 `pending` 不动。
+- 状态机：`pending → running → done / failed`；执行结果写 `result_json`。
+- 单条计划失败**不阻断**其余计划（异常被捕获并落库）。
+- 配合「仅未评测」范围即可实现「部分评测后，次日凌晨自动补齐未完成的」。
+
+### 邮件发送策略（重要）
+
+- **邮件正文永不包含任何分数，只发 AI 评语**。这是硬约束，`tests/unit/test_email.py::TestEmailNeverContainsScores` 会在 `_build_email` 源码里静态检查分数字段引用，改模板时不要往里加分。
+- 分数只在 **Web 结果页** 与 **xlsx 导出** 展示（含四维分 + 加分 + 进度状态 + 进度调整）。
+- 三种发送时机：
+  1. 立即评测时勾选「完成后自动发送」
+  2. 定时计划的 `auto_send_email=true`
+  3. 事后手动：结果页「发送评语邮件」按钮 → `POST /send-emails?date=YYYY-MM-DD`
+- 幂等：`email_sent=true` 的记录不会重复发送。
 
 ---
 
@@ -112,6 +136,19 @@ curl -X POST "http://localhost:8000/run-today?date=2025-01-15"
 - 使用 Python 标准库 `smtplib`
 - 支持 TLS（端口 587）
 - 邮件内容模板：鼓励开头 + 今日成就 + 今日问题 + 改进建议
+- **正文只含评语，绝不含分数**（详见第四节「邮件发送策略」）
+
+### 失败重试分级（`retry_service`）
+
+失败原因记录在 `Assessment.fail_reason`，重试间隔按原因区分：
+
+| `fail_reason` | 触发场景 | 重试间隔 |
+|---------------|----------|----------|
+| `repo_pull` | 仓库镜像拉取/代码提取失败（`CodeExtractionError`） | **1 小时** |
+| `llm` | LLM 3 次即时重试后仍失败 | **2 小时** |
+
+- `attempts` 达到 `MAX_RETRY_ATTEMPTS = 5` 后置为 `needs_manual`，不再自动重试（避免无效仓库无限重试）。
+- `scheduler.py` 每 **1 小时**调用 `reap_due()`；此 job 的注册**不依赖 `AUTO_RUN_TIME`**（历史缺陷：该变量为空曾导致整个调度器不启动，重试永不触发）。
 
 ---
 
@@ -156,13 +193,19 @@ app/
 │   ├── ai_scoring_service.py # LLM 评分 + 重试
 │   ├── scoring_engine.py    # 权重算分（纯函数）
 │   ├── pipeline.py          # 评测流水线串联
+│   ├── schedule_service.py  # 定时评测计划（EvalSchedule）
+│   ├── retry_service.py     # 失败重试 reaper（按 fail_reason 分级）
 │   └── email_service.py     # 邮件发送
 ├── api/           # HTTP 路由，依赖 services
 │   └── routes.py
 ├── templates/     # Jinja2 模板
 ├── static/        # 静态资源
-├── database.py    # 数据库连接 + init_db()
+├── scheduler.py   # APScheduler：日常评测 + 重试(1h) + 定时计划轮询(1min)
+├── database.py    # 数据库连接 + init_db()（含 SQLite 列迁移）
 └── main.py        # FastAPI 应用入口
+
+scripts/
+└── backfill_scores.py  # 一次性回填历史分数字段（见下）
 ```
 
 **依赖方向（单向）：** `app → api → services → models → config / utils`
@@ -180,14 +223,45 @@ app/
 
 ### LLM 失败重试
 - 单次调用最多 3 次，指数退避（1s, 2s）
-- 3 次全败 → `Assessment.status='failed'`，`next_retry_at = now + 2h`，保存 `saved_context_json`
-- 后台 `retry_service.reap_due()` 每 2 小时重试到期失败项
+- 3 次全败 → `Assessment.status='failed'`，`fail_reason='llm'`，`next_retry_at = now + 2h`，保存 `saved_context_json`
+- 仓库拉取失败（`CodeExtractionError`）→ `fail_reason='repo_pull'`，`next_retry_at = now + 1h`
+- 后台 `retry_service.reap_due()` 每 **1 小时**扫描到期失败项（间隔由 `fail_reason` 决定，不是扫描频率）
+- `attempts >= 5` 后转 `needs_manual`，停止自动重试
 - `LLMInvalidResponse` 异常在 `pipeline.py` 中被捕获，不影响其他学生
+
+### 分数字段回写（易漏）
+
+`Assessment` 有 6 个分数字段，**每条评分路径都必须写全**：
+
+| 字段 | 来源 |
+|------|------|
+| `quality_score` / `match_score` / `bonus_score` | LLM 直接返回 |
+| `volume_score` | `scoring_engine.derive_volume_score()` |
+| `schedule_adjustment` | `scoring_engine.derive_schedule_adjustment()` |
+| `total_score` | `scoring_engine.compute_final()` |
+
+- 共 **3 处**写入点：`pipeline.py` 的 diff 路径、`pipeline.py` 的 full 路径、`retry_service.py` 的重试成功路径。改动其一时三处都要同步。
+- 历史缺陷：`volume_score` / `schedule_adjustment` 曾在三处**全部漏写**，导致 280 条记录该字段为 NULL/0，但值已计入 `total_score`。已由 `scripts/backfill_scores.py` 从 `total_score` 代数反解回填。
+- 推导公式只允许存在于 `scoring_engine.py`，不要在调用方就地重算。
+
+### 数据库备份（SQLite WAL）
+
+本库运行在 **WAL 模式**，`cp xxx.db` 会漏掉 `-wal` 中尚未 checkpoint 的已提交数据，得到静默残缺的副本。
+
+```python
+# 正确做法：官方 backup API
+import sqlite3
+src = sqlite3.connect('data/github_tracker.db')
+dst = sqlite3.connect('/tmp/backup.db')
+with dst:
+    src.backup(dst)
+```
 
 ### 邮件发送
 - 同一学生当日多条 Assessment（多项目）汇总为**一封邮件**（D25）
 - 邮件失败不阻塞评分结果，仅记录 warning 日志
 - 已发送邮件（`email_sent=true`）不重复发送
+- **正文只含评语，不含任何分数**（硬约束，有测试锁定）
 
 ### 导入列名别名
 - 学生表：`学生姓名`/`student_name` → `name`，`GitHub仓库`/`github_repo`/`仓库地址` → `github_repo`，`邮箱`/`email` → `email`
@@ -230,9 +304,13 @@ app/
 | AI 评分 | `app/services/ai_scoring_service.py` |
 | 评分引擎 | `app/services/scoring_engine.py` |
 | 评测流水线 | `app/services/pipeline.py` |
+| 定时评测计划 | `app/services/schedule_service.py` |
+| 失败重试 reaper | `app/services/retry_service.py` |
+| 定时调度注册 | `app/scheduler.py` |
 | 邮件服务 | `app/services/email_service.py` |
 | API 路由 | `app/api/routes.py` |
 | 导出工具 | `app/utils/export.py` |
+| 分数回填脚本 | `scripts/backfill_scores.py` |
 | 单元测试 | `tests/unit/` |
 | 集成测试 | `tests/integration/` |
 | 公共 fixtures | `tests/conftest.py` |

@@ -10,6 +10,8 @@ from app.models import Student, Project, DailyPlan, GithubActivity, Assessment, 
 from app.utils.export import export_daily, export_project_assessments
 from app.services.import_service import import_students
 from app.services.pipeline import run_today
+from app.services.email_service import send_daily_comments
+from app.services.schedule_service import create_schedule
 from app.services.eval_jobs import start_eval_job, is_running
 from app.middleware.auth import require_auth, login_endpoint, security
 
@@ -870,6 +872,30 @@ async def run_today_endpoint(
     return result
 
 
+@router.post("/send-emails")
+async def send_emails_endpoint(
+    request: Request,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    qp = request.query_params
+    form_data: dict = {}
+    if "form" in request.headers.get("content-type", ""):
+        form = await request.form()
+        form_data = {"date": form.get("date")}
+
+    date = qp.get("date") or form_data.get("date")
+    if date:
+        try:
+            target_date = datetime.date.fromisoformat(str(date))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="日期格式无效")
+    else:
+        target_date = _date.today()
+
+    return send_daily_comments(target_date, session=session)
+
+
 @router.get("/projects/{project_id}/eval", response_class=HTMLResponse)
 def project_eval_page(
     request: Request, project_id: int,
@@ -896,11 +922,10 @@ def run_project_eval(
     plan_id: str = Form(None),
     sample_size: str = Form(None),
     send_email: str = Form("0"),
+    start_mode: str = Form("now"),
+    run_at: str = Form(None),
     session: Session = Depends(get_session),
 ):
-    if is_running():
-        return JSONResponse({"busy": True, "error": "已有评测任务正在进行，请稍后再试"},
-                            status_code=409)
     target_date = datetime.date.fromisoformat(date) if date else _date.today()
     eval_mode_final = eval_mode if eval_mode in ("diff", "full") else "diff"
     pid = None
@@ -913,14 +938,49 @@ def run_project_eval(
     sample = None
     if sample_size and str(sample_size).strip().isdigit():
         sample = int(sample_size)
+
+    only_missing_flag = str(only_missing).lower() in ("1", "true", "on")
+    auto_send = str(send_email).lower() in ("1", "true", "on")
+
+    if str(start_mode).strip().lower() == "scheduled":
+        if run_at:
+            try:
+                when = datetime.datetime.fromisoformat(str(run_at))
+            except ValueError:
+                raise HTTPException(status_code=422, detail="启动时间格式无效")
+        else:
+            when = datetime.datetime.combine(
+                target_date + datetime.timedelta(days=1), datetime.time(2, 0)
+            )
+        schedule = create_schedule(
+            session,
+            target_date=target_date,
+            run_at=when,
+            eval_mode=eval_mode_final,
+            project_id=project_id,
+            plan_id=pid,
+            only_missing=only_missing_flag,
+            sample_size=sample,
+            auto_send_email=auto_send,
+        )
+        return JSONResponse({
+            "scheduled": True,
+            "schedule_id": schedule.id,
+            "run_at": schedule.run_at.isoformat(),
+            "auto_send_email": schedule.auto_send_email,
+        })
+
+    if is_running():
+        return JSONResponse({"busy": True, "error": "已有评测任务正在进行，请稍后再试"},
+                            status_code=409)
     job_id = start_eval_job(
         target_date,
         project_id=project_id,
-        only_missing=str(only_missing).lower() in ("1", "true", "on"),
+        only_missing=only_missing_flag,
         eval_mode=eval_mode_final,
         plan_id=pid,
         sample_size=sample,
-        send_email=str(send_email).lower() in ("1", "true", "on"),
+        send_email=auto_send,
     )
     return JSONResponse({"job_id": job_id})
 

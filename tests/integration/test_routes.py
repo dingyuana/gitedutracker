@@ -1245,3 +1245,123 @@ class TestAssessmentsExport:
         resp = app.get(f"/projects/{seed_data['p1'].id}/assessments")
         assert resp.status_code == 200
         assert "/assessments/export" in resp.text
+
+
+class TestSendEmailsEndpoint:
+    """POST /send-emails：手动发送评语邮件（仅评语，不含分数）"""
+
+    def test_returns_send_summary(self, app):
+        with patch("app.api.routes.send_daily_comments",
+                   return_value={"sent": 3, "skipped": 1, "failed": 0}) as mock_send:
+            resp = app.post("/send-emails", data={"date": "2026-08-21"})
+        assert resp.status_code == 200
+        assert resp.json() == {"sent": 3, "skipped": 1, "failed": 0}
+        assert mock_send.call_args[0][0] == date(2026, 8, 21)
+
+    def test_accepts_query_param(self, app):
+        with patch("app.api.routes.send_daily_comments",
+                   return_value={"sent": 1, "skipped": 0, "failed": 0}) as mock_send:
+            resp = app.post("/send-emails?date=2026-08-20")
+        assert resp.status_code == 200
+        assert mock_send.call_args[0][0] == date(2026, 8, 20)
+
+    def test_defaults_to_today_when_no_date(self, app):
+        with patch("app.api.routes.send_daily_comments",
+                   return_value={"sent": 0, "skipped": 0, "failed": 0}) as mock_send:
+            resp = app.post("/send-emails")
+        assert resp.status_code == 200
+        assert mock_send.call_args[0][0] == date.today()
+
+    def test_invalid_date_returns_422(self, app):
+        resp = app.post("/send-emails", data={"date": "not-a-date"})
+        assert resp.status_code == 422
+
+    def test_is_idempotent_via_email_sent_flag(self, app, db_session, seed_data):
+        """已发送过的不重复发送 —— 由 email_service 的 email_sent 过滤保证"""
+        from app.services.email_service import send_daily_comments as real_send
+        a = Assessment(
+            student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+            date=date(2026, 8, 21), status='done', total_score=88.0,
+            comment='做得不错', email_sent=True,
+        )
+        db_session.add(a)
+        db_session.commit()
+        with patch("app.services.email_service.get_effective_settings") as mock_cfg:
+            mock_cfg.return_value = type("S", (), {
+                "smtp_host": "smtp.test", "smtp_port": 587,
+                "smtp_user": "u@test", "smtp_pass": "p", "smtp_from": "u@test",
+            })()
+            with patch("app.services.email_service._send_one", return_value=True) as mock_one:
+                result = real_send(date(2026, 8, 21), session=db_session)
+        assert mock_one.call_count == 0
+        assert result["sent"] == 0
+
+
+class TestScheduledEvalCreation:
+    """POST /projects/{id}/run-eval 的 start_mode=scheduled 分支"""
+
+    def test_scheduled_mode_creates_schedule_not_job(self, app, db_session, seed_data):
+        from app.models import EvalSchedule
+        with patch("app.api.routes.start_eval_job") as mock_job:
+            resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": "2026-08-21", "eval_mode": "full",
+                "only_missing": "1", "send_email": "0",
+                "start_mode": "scheduled",
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["scheduled"] is True
+        assert mock_job.call_count == 0
+
+        rows = db_session.exec(select(EvalSchedule)).all()
+        assert len(rows) == 1
+        assert rows[0].status == "pending"
+        assert rows[0].target_date == date(2026, 8, 21)
+        assert rows[0].only_missing is True
+        assert rows[0].auto_send_email is False
+
+    def test_default_run_at_is_next_day_2am(self, app, db_session, seed_data):
+        from app.models import EvalSchedule
+        with patch("app.api.routes.start_eval_job"):
+            app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": "2026-08-21", "start_mode": "scheduled",
+            })
+        row = db_session.exec(select(EvalSchedule)).one()
+        assert row.run_at.date() == date(2026, 8, 22)
+        assert (row.run_at.hour, row.run_at.minute) == (2, 0)
+
+    def test_explicit_run_at_is_honoured(self, app, db_session, seed_data):
+        from app.models import EvalSchedule
+        with patch("app.api.routes.start_eval_job"):
+            app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": "2026-08-21", "start_mode": "scheduled",
+                "run_at": "2026-08-25T06:30",
+            })
+        row = db_session.exec(select(EvalSchedule)).one()
+        assert row.run_at.date() == date(2026, 8, 25)
+        assert (row.run_at.hour, row.run_at.minute) == (6, 30)
+
+    def test_auto_send_email_flag_persisted(self, app, db_session, seed_data):
+        from app.models import EvalSchedule
+        with patch("app.api.routes.start_eval_job"):
+            app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": "2026-08-21", "start_mode": "scheduled", "send_email": "1",
+            })
+        assert db_session.exec(select(EvalSchedule)).one().auto_send_email is True
+
+    def test_invalid_run_at_returns_422(self, app, seed_data):
+        resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+            "date": "2026-08-21", "start_mode": "scheduled", "run_at": "garbage",
+        })
+        assert resp.status_code == 422
+
+    def test_now_mode_still_starts_job(self, app, db_session, seed_data):
+        from app.models import EvalSchedule
+        with patch("app.api.routes.start_eval_job", return_value="job-1") as mock_job:
+            resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": "2026-08-21", "start_mode": "now",
+            })
+        assert resp.status_code == 200
+        assert resp.json()["job_id"] == "job-1"
+        assert mock_job.call_count == 1
+        assert db_session.exec(select(EvalSchedule)).all() == []

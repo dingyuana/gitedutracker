@@ -246,3 +246,96 @@ class TestReaperQueryDoesNotRetryNotYetDue:
 
         session.refresh(not_yet_due_assessment)
         assert not_yet_due_assessment.status == "failed"
+
+
+class TestScoreWritebackCompleteness:
+
+    @patch("app.services.retry_service.score_student")
+    def test_successful_retry_writes_volume_and_adjustment(
+            self, mock_score, session, seed_data, mock_settings):
+        from app.services.retry_service import _attempt_score
+        d = date(2026, 9, 2)
+        a = Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                       date=d, eval_type='full', status='failed', attempts=2)
+        session.add(a)
+        session.commit()
+
+        mock_score.return_value = {
+            "quality_score": 80, "match_score": 90, "schedule_status": "behind",
+            "bonus": 3, "comment": "c",
+        }
+        ctx = json.dumps({"eval_mode": "full", "project_id": seed_data['p1'].id,
+                          "date": str(d), "loc_additions": 60, "loc_deletions": 40})
+
+        ok = _attempt_score(seed_data['s1'].id, ctx, session, mock_settings, target_date=d)
+
+        assert ok is True
+        session.refresh(a)
+        assert a.volume_score == 100.0, "loc=100/threshold=100 → 100 分，不得为 None"
+        assert a.schedule_adjustment == -5.0, "behind 必须回写 penalty，不得停留 0.0"
+        assert a.attempts == 3, "重试路径必须累加 attempts"
+
+    @patch("app.services.retry_service.score_student")
+    def test_failure_only_marks_matching_eval_type(
+            self, mock_score, session, seed_data, mock_settings):
+        from app.services.retry_service import _attempt_score
+        d = date(2026, 9, 2)
+        diff_a = Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                            date=d, eval_type='diff', status='done', total_score=77.0)
+        full_a = Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                            date=d, eval_type='full', status='failed')
+        session.add_all([diff_a, full_a])
+        session.commit()
+
+        mock_score.side_effect = RuntimeError("llm down")
+        ctx = json.dumps({"eval_mode": "full", "project_id": seed_data['p1'].id,
+                          "date": str(d)})
+
+        _attempt_score(seed_data['s1'].id, ctx, session, mock_settings, target_date=d)
+
+        session.refresh(diff_a)
+        session.refresh(full_a)
+        assert diff_a.status == 'done', "diff 记录不得被 full 的失败波及"
+        assert diff_a.total_score == 77.0
+        assert full_a.status == 'failed'
+        assert full_a.fail_reason == 'llm'
+
+
+class TestRetryIntervalsByReason:
+
+    def test_repo_pull_uses_one_hour(self, session, seed_data):
+        from app.services.retry_service import arm_retry
+        a = Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                       date=date(2026, 9, 2), eval_type='full', attempts=1)
+        arm_retry(a, "repo_pull")
+        delta = a.next_retry_at - datetime.now(timezone.utc)
+        assert 0.9 < delta.total_seconds() / 3600 < 1.1
+        assert a.status == 'failed'
+        assert a.fail_reason == 'repo_pull'
+
+    def test_llm_uses_two_hours(self, session, seed_data):
+        from app.services.retry_service import arm_retry
+        a = Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                       date=date(2026, 9, 2), eval_type='full', attempts=1)
+        arm_retry(a, "llm")
+        delta = a.next_retry_at - datetime.now(timezone.utc)
+        assert 1.9 < delta.total_seconds() / 3600 < 2.1
+
+    def test_cap_switches_to_needs_manual(self, session, seed_data):
+        from app.services.retry_service import arm_retry, MAX_RETRY_ATTEMPTS
+        a = Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                       date=date(2026, 9, 2), eval_type='full',
+                       attempts=MAX_RETRY_ATTEMPTS)
+        arm_retry(a, "repo_pull")
+        assert a.status == 'needs_manual'
+        assert a.next_retry_at is None
+
+    def test_reaper_skips_needs_manual(self, session, seed_data):
+        from app.services.retry_service import retry_failed_assessments
+        a = Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                       date=date(2026, 9, 2), eval_type='full',
+                       status='needs_manual', next_retry_at=None,
+                       saved_context_json='{}')
+        session.add(a)
+        session.commit()
+        assert retry_failed_assessments(session=session) == 0

@@ -46,6 +46,10 @@ def _migrate_sqlite_engine(engine):
         cols = {c['name'] for c in inspector.get_columns('assessment')}
         if 'eval_type' not in cols:
             _rebuild_assessment_table(engine)
+            cols = {c['name'] for c in inspect(engine).get_columns('assessment')}
+        if 'fail_reason' not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE assessment ADD COLUMN fail_reason VARCHAR"))
 
 
 def _rebuild_assessment_table(engine):

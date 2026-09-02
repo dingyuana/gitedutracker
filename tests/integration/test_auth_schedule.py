@@ -123,17 +123,27 @@ class TestAuthMiddleware:
 
 class TestScheduler:
 
-    def test_no_scheduler_when_auto_run_time_empty(self, mock_settings_no_auth):
-        """AUTO_RUN_TIME 为空时，start_scheduler 不启动调度器"""
+    def test_starts_without_auto_run_time_but_skips_daily_job(self, mock_settings_no_auth):
+        """AUTO_RUN_TIME 为空时仍须启动调度器（重试与定时计划 job 不依赖它），但不注册每日 cron"""
         import app.scheduler as scheduler_module
+        scheduler_module._scheduler = None
         with patch.object(scheduler_module, "get_settings", return_value=mock_settings_no_auth):
             from app.scheduler import start_scheduler
             result = start_scheduler()
-            assert result is None
+            try:
+                assert result is not None
+                ids = {j.id for j in result.get_jobs()}
+                assert "run_today_daily" not in ids
+                assert "retry_failed_assessments" in ids
+                assert "run_due_schedules" in ids
+            finally:
+                result.shutdown(wait=False)
+                scheduler_module._scheduler = None
 
     def test_scheduler_starts_when_auto_run_time_set(self, mock_settings_with_auth):
         """AUTO_RUN_TIME 有值时，start_scheduler 启动 APScheduler"""
         import app.scheduler as scheduler_module
+        scheduler_module._scheduler = None
         with patch.object(scheduler_module, "get_settings", return_value=mock_settings_with_auth):
             with patch("app.scheduler.BackgroundScheduler") as MockScheduler:
                 mock_scheduler_instance = MagicMock()
@@ -143,13 +153,15 @@ class TestScheduler:
                 result = start_scheduler()
 
                 MockScheduler.assert_called_once()
-                mock_scheduler_instance.add_job.assert_called_once()
+                assert mock_scheduler_instance.add_job.call_count == 3
                 mock_scheduler_instance.start.assert_called_once()
                 assert result is mock_scheduler_instance
+        scheduler_module._scheduler = None
 
     def test_scheduler_adds_run_today_job(self, mock_settings_with_auth):
         """调度器添加的 job 调用 run_today"""
         import app.scheduler as scheduler_module
+        scheduler_module._scheduler = None
         with patch.object(scheduler_module, "get_settings", return_value=mock_settings_with_auth):
             with patch("app.scheduler.BackgroundScheduler") as MockScheduler:
                 mock_scheduler_instance = MagicMock()
@@ -158,7 +170,8 @@ class TestScheduler:
                 from app.scheduler import start_scheduler
                 start_scheduler()
 
-                call_args = mock_scheduler_instance.add_job.call_args
-                assert call_args[0][0] is not None
-                assert call_args[1].get("expression") == "0 9 * * *" or \
-                       len(call_args[0]) > 1 and call_args[0][1] == "cron"
+                daily = [c for c in mock_scheduler_instance.add_job.call_args_list
+                         if c[1].get("id") == "run_today_daily"]
+                assert len(daily) == 1
+                assert daily[0][0][1] == "cron"
+        scheduler_module._scheduler = None

@@ -13,28 +13,63 @@
         </div>
     </form>
     {% if date %}
-    <div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem;">
+    <div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
         <a href="/export?date={{ date.strftime('%Y-%m-%d') }}&fmt=xlsx" class="btn btn-success" download>导出 xlsx</a>
+        <button type="button" class="btn btn-primary" onclick="sendEmails('{{ date.strftime('%Y-%m-%d') }}')">发送评语邮件</button>
+        <span style="color:var(--muted);font-size:0.85rem;">邮件仅包含评语，不含任何分数；已发送过的不会重复发送</span>
     </div>
+    <div id="mail-result" style="margin-top:0.75rem;"></div>
     {% endif %}
 </div>
+<script>
+function sendEmails(d) {
+    var btn = event.target;
+    var box = document.getElementById("mail-result");
+    if (!confirm("确认向 " + d + " 已完成评测的学生发送评语邮件？")) return;
+    btn.disabled = true;
+    btn.textContent = "发送中…";
+    var body = new URLSearchParams();
+    body.append("date", d);
+    fetch("/send-emails", { method: "POST", body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+            if (j.error) {
+                box.innerHTML = '<p style="color:#c62828;">发送失败：' + j.error + '</p>';
+            } else {
+                box.innerHTML = '<p style="color:#2e7d32;">已发送 ' + j.sent +
+                    ' 封，跳过 ' + j.skipped + ' 位（无邮箱），失败 ' + j.failed + ' 封。</p>';
+            }
+        })
+        .catch(function (e) {
+            box.innerHTML = '<p style="color:#c62828;">请求异常：' + e + '</p>';
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = "发送评语邮件";
+        });
+}
+</script>
+{% set STATUS_CN = {'ontime': '正常', 'ahead': '超前', 'behind': '滞后'} %}
 {% if date %}
 <div class="card">
     <h3>{{ date }} 评测结果</h3>
     {% if assessments %}
     <table>
         <thead>
-            <tr><th>学生</th><th>项目</th><th>质量分</th><th>匹配分</th><th>总分</th><th>进度</th><th>评语</th></tr>
+            <tr><th>学生</th><th>项目</th><th>代码量分</th><th>质量分</th><th>匹配分</th><th>加分</th><th>进度状态</th><th>进度调整</th><th>总分</th><th>评语</th></tr>
         </thead>
         <tbody>
             {% for item in assessments %}
             <tr>
                 <td>{{ item.student.name }}</td>
                 <td>{{ item.project.name }}</td>
-                <td>{{ item.assessment.quality_score or "—" }}</td>
-                <td>{{ item.assessment.match_score or "—" }}</td>
+                <td>{{ item.assessment.volume_score if item.assessment.volume_score is not none else "—" }}</td>
+                <td>{{ item.assessment.quality_score if item.assessment.quality_score is not none else "—" }}</td>
+                <td>{{ item.assessment.match_score if item.assessment.match_score is not none else "—" }}</td>
+                <td>{{ item.assessment.bonus_score if item.assessment.bonus_score is not none else "—" }}</td>
+                <td>{{ STATUS_CN.get(item.assessment.schedule_status, item.assessment.schedule_status) }}</td>
+                <td>{{ item.assessment.schedule_adjustment if item.assessment.schedule_adjustment is not none else "—" }}</td>
                 <td>{{ item.assessment.total_score if item.assessment.total_score is not none else "—" }}</td>
-                <td>{{ item.assessment.schedule_status }}</td>
                 <td>{{ item.assessment.comment or "" }}</td>
             </tr>
             {% endfor %}

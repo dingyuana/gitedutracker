@@ -282,3 +282,70 @@ class TestSendDailyComments:
         send_daily_comments(seed_done_assessments['target'], session=session)
 
         assert mock_smtp.starttls.call_count >= 2
+
+
+class TestEmailNeverContainsScores:
+    """硬约束：邮件只发评语，任何情况下都不得出现分数。
+
+    用户明确要求「分数永远不要发送，邮件发送是发送评语」，因此这里既做
+    源码层面的静态约束，也做渲染结果的行为约束，防止后续有人往模板里加分。
+    """
+
+    _SCORE_FIELDS = (
+        'total_score', 'volume_score', 'quality_score',
+        'match_score', 'bonus_score', 'schedule_adjustment',
+    )
+
+    def test_build_email_source_references_no_score_field(self):
+        import inspect
+        from app.services import email_service
+        src = inspect.getsource(email_service._build_email)
+        leaked = [f for f in self._SCORE_FIELDS if f in src]
+        assert leaked == [], f"_build_email 引用了分数字段: {leaked}"
+
+    def test_rendered_body_omits_distinctive_score_values(self, session):
+        """用不会与评语文字巧合的分数值，验证渲染结果不含它们。"""
+        from app.services.email_service import _build_email
+        st = Student(name='王五', email='ww@example.com', github_repo='ww/r')
+        pj = Project(name='项目W')
+        session.add_all([st, pj])
+        session.commit()
+        session.refresh(st)
+        session.refresh(pj)
+        a = Assessment(
+            student_id=st.id, project_id=pj.id, date=date(2026, 8, 21),
+            status='done', total_score=77.77, volume_score=66.66,
+            quality_score=55.55, match_score=44.44, bonus_score=33.33,
+            schedule_adjustment=-22.22, schedule_status='behind',
+            comment='今天的提交结构清晰，继续保持。',
+        )
+        session.add(a)
+        session.commit()
+
+        subject, body = _build_email(st, [a], [None])
+        rendered = subject + body
+        for value in ('77.77', '66.66', '55.55', '44.44', '33.33', '22.22'):
+            assert value not in rendered, f"邮件泄漏了分数 {value}"
+        assert '今天的提交结构清晰，继续保持。' in body
+
+    def test_rendered_body_omits_score_labels(self, session):
+        from app.services.email_service import _build_email
+        st = Student(name='赵六', email='zl@example.com', github_repo='zl/r')
+        pj = Project(name='项目Z')
+        session.add_all([st, pj])
+        session.commit()
+        session.refresh(st)
+        session.refresh(pj)
+        a = Assessment(
+            student_id=st.id, project_id=pj.id, date=date(2026, 8, 21),
+            status='done', total_score=88.0, quality_score=80.0,
+            match_score=90.0, schedule_status='ontime', comment='不错',
+        )
+        session.add(a)
+        session.commit()
+
+        subject, body = _build_email(st, [a], [None])
+        rendered = subject + body
+        for label in ('总分', '得分', '评分', '分数', '代码量分',
+                      '质量分', '匹配分', '进度调整', 'score', 'Score'):
+            assert label not in rendered, f"邮件出现评分类字样 '{label}'"

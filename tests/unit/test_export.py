@@ -69,7 +69,8 @@ class TestExportDaily:
         df = pd.read_excel(io.BytesIO(result), engine='openpyxl')
         expected_cols = [
             '日期', '学生姓名', '邮箱', 'GitHub仓库', '项目名称',
-            '代码增', '代码删', '质量分', '匹配分', '进度', '总分', '评语'
+            '代码增', '代码删', '代码量分', '质量分', '匹配分', '加分',
+            '进度状态', '进度调整', '总分', '评语'
         ]
         assert list(df.columns) == expected_cols
         assert len(df) == 0
@@ -81,7 +82,8 @@ class TestExportDaily:
         df = pd.read_excel(io.BytesIO(result), engine='openpyxl')
         expected_cols = [
             '日期', '学生姓名', '邮箱', 'GitHub仓库', '项目名称',
-            '代码增', '代码删', '质量分', '匹配分', '进度', '总分', '评语'
+            '代码增', '代码删', '代码量分', '质量分', '匹配分', '加分',
+            '进度状态', '进度调整', '总分', '评语'
         ]
         assert list(df.columns) == expected_cols
 
@@ -101,7 +103,7 @@ class TestExportDaily:
         assert row['代码删'] == 10
         assert row['质量分'] == 8.5
         assert row['匹配分'] == 7.0
-        assert row['进度'] == 'ontime'
+        assert row['进度状态'] == '正常'
         assert row['总分'] == 7.8
         assert row['评语'] == '表现良好'
 
@@ -172,3 +174,52 @@ class TestExportDaily:
         df = pd.read_excel(io.BytesIO(result), engine='openpyxl')
         assert len(df) == 1
         assert df.iloc[0]['学生姓名'] == '张三'
+
+
+class TestAllScoreDimensionsExported:
+
+    def test_zero_scores_render_as_zero_not_blank(self, session):
+        from app.models import Student, Project, Assessment
+        from app.utils.export import export_daily
+        s = Student(name='零分生', email='z@e.com', github_repo='z/r')
+        p = Project(name='项目Z')
+        session.add_all([s, p])
+        session.commit()
+        session.refresh(s)
+        session.refresh(p)
+        session.add(Assessment(
+            student_id=s.id, project_id=p.id, date=date(2026, 8, 21),
+            status='done', volume_score=0.0, quality_score=0.0,
+            match_score=0.0, bonus_score=0.0, schedule_adjustment=0.0,
+            total_score=0.0, schedule_status='behind', comment='c',
+        ))
+        session.commit()
+
+        df = pd.read_excel(io.BytesIO(export_daily(date(2026, 8, 21), session=session)),
+                           engine='openpyxl')
+        row = df.iloc[0]
+        assert row['代码量分'] == 0.0
+        assert row['加分'] == 0.0
+        assert row['进度调整'] == 0.0
+        assert row['进度状态'] == '滞后'
+
+    def test_schedule_status_translated_to_chinese(self, session):
+        from app.models import Student, Project, Assessment
+        from app.utils.export import export_daily
+        s = Student(name='超前生', email='a@e.com', github_repo='a/r')
+        p = Project(name='项目A')
+        session.add_all([s, p])
+        session.commit()
+        session.refresh(s)
+        session.refresh(p)
+        session.add(Assessment(
+            student_id=s.id, project_id=p.id, date=date(2026, 8, 21),
+            status='done', schedule_status='ahead', schedule_adjustment=5.0,
+            volume_score=90.0, total_score=95.0,
+        ))
+        session.commit()
+
+        df = pd.read_excel(io.BytesIO(export_daily(date(2026, 8, 21), session=session)),
+                           engine='openpyxl')
+        assert df.iloc[0]['进度状态'] == '超前'
+        assert df.iloc[0]['进度调整'] == 5.0

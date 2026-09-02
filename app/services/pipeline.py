@@ -11,7 +11,10 @@ from sqlmodel import Session, select
 from app.models import Assessment, DailyPlan, GithubActivity, ScoringConfig, Student
 from app.services.ai_scoring_service import LLMInvalidResponse, score_student
 from app.services.github_snapshot import sync_day
-from app.services.scoring_engine import compute_final
+from app.services.retry_service import arm_retry
+from app.services.scoring_engine import (
+    compute_final, derive_schedule_adjustment, derive_volume_score,
+)
 from app.services.email_service import send_daily_comments
 from app.services.settings_service import get_effective_settings
 from app.services.mirror_service import extract_day_activity, extract_snapshot, repo_total_loc
@@ -173,14 +176,13 @@ def _run_today_full(
             logging.getLogger(__name__).warning(
                 "代码提取失败，标记为 failed 待重试 student=%s: %s", student.name, e
             )
-            assessment.status = "failed"
-            assessment.next_retry_at = datetime.now(timezone.utc) + timedelta(hours=2)
             assessment.saved_context_json = json.dumps(
                 {"eval_mode": "full", "plan_content": agg.content,
                  "student_id": student.id, "project_id": agg.project_id,
                  "date": str(target_date)},
                 ensure_ascii=False,
             )
+            arm_retry(assessment, "repo_pull")
             failed_count += 1
             details.append({
                 "student_id": student.id,
@@ -219,7 +221,9 @@ def _run_today_full(
             assessment.status = "done"
             assessment.quality_score = subscores.get("quality_score")
             assessment.match_score = subscores.get("match_score")
+            assessment.volume_score = derive_volume_score(engine_input, config)
             assessment.schedule_status = subscores.get("schedule_status", "ontime")
+            assessment.schedule_adjustment = derive_schedule_adjustment(engine_input, config)
             assessment.total_score = total_score
             assessment.bonus_score = subscores.get("bonus")
             assessment.comment = subscores.get("comment", "")
@@ -567,7 +571,9 @@ def _run_today_diff(
             assessment.status = "done"
             assessment.quality_score = subscores.get("quality_score")
             assessment.match_score = subscores.get("match_score")
+            assessment.volume_score = derive_volume_score(engine_input, config)
             assessment.schedule_status = subscores.get("schedule_status", "ontime")
+            assessment.schedule_adjustment = derive_schedule_adjustment(engine_input, config)
             assessment.total_score = total_score
             assessment.comment = subscores.get("comment", "")
             assessment.evaluated_at = datetime.now(timezone.utc)

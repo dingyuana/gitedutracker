@@ -95,12 +95,13 @@ class TestExportProjectAssessments:
         result = export_project_assessments(p1.id, session=session)
         df = pd.read_excel(io.BytesIO(result), sheet_name='2026-08-20',
                            engine='openpyxl')
-        assert list(df.columns) == ['学生姓名', '质量分', '匹配分', '进度', '总分', '评语']
+        assert list(df.columns) == ['学生姓名', '代码量分', '质量分', '匹配分', '加分',
+                                 '进度状态', '进度调整', '总分', '评语']
         assert len(df) == 2
         row = df[df['学生姓名'] == '张三'].iloc[0]
         assert row['质量分'] == pytest.approx(8.0)
         assert row['匹配分'] == pytest.approx(7.5)
-        assert row['进度'] == 'ontime'
+        assert row['进度状态'] == '正常'
         assert row['总分'] == pytest.approx(7.8)
         assert row['评语'] == 'D1 张三评语'
 

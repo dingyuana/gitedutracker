@@ -123,11 +123,27 @@
                     <input type="number" name="sample_size" min="1" placeholder="如：5">
                 </div>
 
-                <div class="form-group" style="margin-bottom:0">
-                    <label>发送邮件
-                        <input type="checkbox" name="send_email">
-                        <span style="font-size:0.75rem;color:var(--text-muted)">勾选则评测完成后向学生发送评估邮件（默认不发送）</span>
-                    </label>
+                <div class="quick-add" style="margin-top:1rem">
+                    <div class="form-group" style="margin-bottom:0.75rem">
+                        <label>启动方式</label>
+                        <select name="start_mode" id="start-mode">
+                            <option value="now">立即手动开始</option>
+                            <option value="scheduled">指定时间自动启动</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="run-at-group" style="margin-bottom:0.75rem" hidden>
+                        <label>启动时间（默认次日 02:00）</label>
+                        <input type="datetime-local" name="run_at" id="run-at">
+                        <span style="font-size:0.75rem;color:var(--text-muted)">到点自动补评未完成的学生；仓库拉取失败 1 小时后重试</span>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label>邮件方式</label>
+                        <select name="email_mode">
+                            <option value="manual">后期手动发送（默认）</option>
+                            <option value="auto">评测完成后自动发送</option>
+                        </select>
+                        <span style="font-size:0.75rem;color:var(--text-muted)">邮件只包含评语，不含任何分数</span>
+                    </div>
                 </div>
             </form>
 
@@ -165,15 +181,41 @@
     }
     document.getElementById("eval-form").addEventListener("change", function (e) {
         if (e.target && e.target.name === "eval_mode") syncPlanLock();
+        if (e.target && e.target.name === "start_mode") syncStartMode();
     });
     syncPlanLock();
+
+    function defaultRunAt() {
+        // 次日 02:00（本地时区），格式化为 datetime-local 所需的 YYYY-MM-DDTHH:MM
+        var base = new Date();
+        base.setDate(base.getDate() + 1);
+        base.setHours(2, 0, 0, 0);
+        var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+        return base.getFullYear() + "-" + pad(base.getMonth() + 1) + "-" + pad(base.getDate()) +
+            "T" + pad(base.getHours()) + ":" + pad(base.getMinutes());
+    }
+
+    function syncStartMode() {
+        var scheduled = document.getElementById("start-mode").value === "scheduled";
+        var group = document.getElementById("run-at-group");
+        group.hidden = !scheduled;
+        var input = document.getElementById("run-at");
+        if (scheduled && !input.value) input.value = defaultRunAt();
+    }
+    syncStartMode();
 
     document.getElementById("eval-start-btn").addEventListener("click", function () {
         var form = document.getElementById("eval-form");
         var body = new URLSearchParams();
         body.append("eval_mode", form.elements["eval_mode"].value);
         body.append("only_missing", form.elements["scope"].value === "all" ? "0" : "1");
-        body.append("send_email", form.elements["send_email"].checked ? "1" : "0");
+        body.append("send_email", form.elements["email_mode"].value === "auto" ? "1" : "0");
+        var startMode = form.elements["start_mode"].value;
+        body.append("start_mode", startMode);
+        if (startMode === "scheduled") {
+            var runAt = form.elements["run_at"].value.trim();
+            if (runAt) body.append("run_at", runAt);
+        }
         var sample = form.elements["sample_size"].value.trim();
         if (sample) body.append("sample_size", sample);
         var planVal = selectedPlan();
@@ -181,7 +223,8 @@
 
         var zone = document.getElementById("progress-zone");
         zone.hidden = false;
-        document.getElementById("progress-label").textContent = "提交评测任务…";
+        document.getElementById("progress-label").textContent =
+            startMode === "scheduled" ? "创建定时评测计划…" : "提交评测任务…";
 
         fetch("/projects/" + pid + "/run-eval", {
             method: "POST", body: body, headers: {"Content-Type": "application/x-www-form-urlencoded"}
@@ -195,6 +238,13 @@
             return r.json();
         }).then(function (d) {
             if (!d) return;
+            if (d.scheduled) {
+                document.getElementById("progress-bar").style.width = "100%";
+                document.getElementById("progress-label").textContent =
+                    "✅ 已创建定时评测计划，将于 " + d.run_at.replace("T", " ") + " 自动开始（" +
+                    (d.auto_send_email ? "完成后自动发送评语邮件" : "评测完成后需手动发送邮件") + "）";
+                return;
+            }
             if (!d.job_id) { document.getElementById("progress-label").textContent = "评测启动失败，请重试"; return; }
             var timer = setInterval(function () {
                 fetch("/eval-progress/" + d.job_id).then(function (r) { return r.json(); }).then(function (p) {
