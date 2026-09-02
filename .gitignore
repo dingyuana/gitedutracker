@@ -18,6 +18,13 @@ data/
 *.db
 *.sqlite
 *.sqlite3
+*.db-wal
+*.db-shm
+*.db.bak.*
+
+# Agent 运行时产物（.omo/plans、notepads、drafts 为设计文档，需保留）
+.omo/run-continuation/
+.playwright-mcp/
 
 # Testing
 .pytest_cache/
