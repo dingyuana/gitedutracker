@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import date
-from typing import Optional
 
 from sqlmodel import Session, select
 
 from app.models import GithubActivity, Student
-from app.services.github_service import fetch_activity, fetch_activity_for_repo
+from app.services.github_service import fetch_activity_for_repo
 from app.services.mirror_service import extract_day_activity as _mirror_extract
 
 SYNC_INTERVAL_SECONDS = 3.0
@@ -22,7 +22,10 @@ def _is_rate_limit_error(e: Exception) -> bool:
 def _fetch_via_mirror(student, target_date: date) -> dict | None:
     try:
         local = _mirror_extract(student.github_url or student.github_repo, target_date)
-    except Exception:
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            "镜像提取失败 student_id=%s（回退 API）: %s", getattr(student, "id", "?"), e
+        )
         return None
     return {
         "commits_count": local.get("commits_count", 0),

@@ -136,6 +136,17 @@ class TestExtractDayActivity:
         )
         assert result["commits_count"] == 0
 
+    def test_month_end_date_does_not_overflow(self, origin_repo, mirrors_dir):
+        """月末日期（如 12/31）计算次日不得抛 ValueError（回归：replace(day+1) 溢出）。"""
+        from app.services.mirror_service import ensure_mirror, extract_day_activity
+        from datetime import date
+        ensure_mirror(str(origin_repo), mirror_dir=str(mirrors_dir))
+        result = extract_day_activity(
+            str(origin_repo), date(2026, 12, 31), mirror_dir=str(mirrors_dir)
+        )
+        assert result["commits_count"] == 0
+        assert result["code_diffs"] == []
+
 class TestExtractSnapshot:
 
     def test_returns_source_files_with_content(self, origin_repo, mirrors_dir):

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import subprocess
-from datetime import date, datetime
+import logging
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 DEFAULT_MIRROR_DIR = "data/mirrors"
@@ -86,8 +87,11 @@ def ensure_mirror(repo: str, mirror_dir: str | None = None) -> Path:
         if (path / "HEAD").exists():
             try:
                 _run_git(path, "remote", "update", "--prune", timeout=10)
-            except GitMirrorError:
-                pass  # 更新失败不影响读取历史数据
+            except GitMirrorError as e:
+                # 更新失败不影响读取历史数据，但记录以便排查网络/权限问题
+                logging.getLogger(__name__).warning(
+                    "镜像更新失败（继续用历史数据）%s: %s", path, e
+                )
             return path
         import shutil
         shutil.rmtree(path, ignore_errors=True)
@@ -117,7 +121,7 @@ def extract_day_activity(
     path = ensure_mirror(repo, mirror_dir)
 
     since = datetime.combine(target_date, datetime.min.time()).isoformat()
-    until = datetime.combine(target_date.replace(day=target_date.day + 1), datetime.min.time()).isoformat()
+    until = datetime.combine(target_date + timedelta(days=1), datetime.min.time()).isoformat()
 
     log_raw = _run_git(
         path,
