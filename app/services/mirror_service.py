@@ -39,20 +39,22 @@ def detect_platform(repo: str) -> str:
     return "github"
 
 
-def _to_ssh_url(repo: str) -> str:
-    """GitHub SSH over port 443 URL（Gitee 不使用此回退）"""
-    platform = detect_platform(repo)
-    if platform == "gitee":
-        return ""  # Gitee 不支持 SSH over 443
-
+def _repo_slug(repo: str) -> str:
+    """归一化为 owner/repo。URL 取末两段，短格式原样保留。"""
     cleaned = repo.strip().rstrip("/")
     if cleaned.endswith(".git"):
         cleaned = cleaned[:-4]
     if "://" in cleaned or cleaned.startswith(("/", "~")) or cleaned[1:3] == ":\\":
-        cleaned = cleaned.split("://")[-1].split("/")[-1]
-    else:
-        cleaned = cleaned.replace("/", "__")
-    return f"git@ssh.github.com:443:{cleaned}.git"
+        parts = [p for p in cleaned.split("://")[-1].split("/") if p]
+        return "/".join(parts[-2:]) if len(parts) >= 3 else parts[-1]
+    return cleaned
+
+
+def _to_ssh_url(repo: str) -> str:
+    """GitHub SSH over port 443 URL（Gitee 不使用此回退）"""
+    if detect_platform(repo) == "gitee":
+        return ""
+    return f"git@ssh.github.com:443:{_repo_slug(repo)}.git"
 
 
 def _to_remote_url(repo: str) -> str:
@@ -71,20 +73,28 @@ def mirror_path(repo: str, mirror_dir: str | None = None) -> Path:
     base = Path(mirror_dir or DEFAULT_MIRROR_DIR).resolve()
     cleaned = repo.strip().rstrip("/")
     if "://" in cleaned or cleaned.startswith(("/", "~")) or cleaned[1:3] == ":\\":
-        name = cleaned.split("://")[-1].rstrip(".git").split("/")[-1]
+        name = cleaned.split("://")[-1].split("/")[-1].removesuffix(".git")
         if not name:
             raise GitMirrorError(f"无法确定镜像名: {repo}")
     else:
-        name = cleaned[:-4] if cleaned.endswith(".git") else cleaned
-        name = name.replace("/", "__")
+        name = cleaned.removesuffix(".git").replace("/", "__")
     return base / f"{name}.git"
+
+
+def _has_commits(path: Path) -> bool:
+    try:
+        out = _run_git(path, "for-each-ref", "--count=1", timeout=15)
+    except (GitMirrorError, subprocess.TimeoutExpired):
+        return False
+    return bool(out.strip())
 
 
 def ensure_mirror(repo: str, mirror_dir: str | None = None) -> Path:
     path = mirror_path(repo, mirror_dir)
 
     if path.exists():
-        if (path / "HEAD").exists():
+        # 仅有 HEAD 文件不足以判定可用：克隆失败会留下零 commit 空壳
+        if (path / "HEAD").exists() and _has_commits(path):
             try:
                 _run_git(path, "remote", "update", "--prune", timeout=30)
             except (GitMirrorError, subprocess.TimeoutExpired) as e:
@@ -94,22 +104,25 @@ def ensure_mirror(repo: str, mirror_dir: str | None = None) -> Path:
                 )
             return path
         import shutil
+        logging.getLogger(__name__).warning("清除不可用镜像并重建: %s", path)
         shutil.rmtree(path, ignore_errors=True)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     url = _to_remote_url(repo)
     try:
         _run_git(path.parent, "clone", "--mirror", url, str(path), timeout=180)
+        return path
     except GitMirrorError:
-        # 回退 SSH over 443（仅 GitHub，Gitee 不使用此回退）
         ssh_url = _to_ssh_url(repo)
-        if ssh_url:
-            try:
-                _run_git(path.parent, "clone", "--mirror", ssh_url, str(path), timeout=180)
-            except GitMirrorError as e2:
-                raise GitMirrorError(f"镜像克隆失败 {repo} (HTTPS/SSH 均失败)") from e2
-        raise
-    return path
+        if not ssh_url:
+            raise
+        import shutil
+        shutil.rmtree(path, ignore_errors=True)
+        try:
+            _run_git(path.parent, "clone", "--mirror", ssh_url, str(path), timeout=180)
+        except GitMirrorError as e2:
+            raise GitMirrorError(f"镜像克隆失败 {repo} (HTTPS/SSH 均失败)") from e2
+        return path
 
 
 def extract_day_activity(

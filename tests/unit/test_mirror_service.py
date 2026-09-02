@@ -63,6 +63,93 @@ class TestEnsureMirror:
         assert p == mirrors_dir / "owner__repo.git"
 
 
+class TestSshFallbackUrl:
+
+    @pytest.mark.parametrize("repo,expected", [
+        ("https://github.com/PCashew/Harmony-smartcar",
+         "git@ssh.github.com:443:PCashew/Harmony-smartcar.git"),
+        ("https://github.com/X-196/Harmony_Car.git",
+         "git@ssh.github.com:443:X-196/Harmony_Car.git"),
+        ("ADVOT/STM-harmonyos-car",
+         "git@ssh.github.com:443:ADVOT/STM-harmonyos-car.git"),
+        ("https://github.com/phoenix23513/HarmonyOS_Car.git",
+         "git@ssh.github.com:443:phoenix23513/HarmonyOS_Car.git"),
+    ])
+    def test_ssh_url_preserves_owner(self, repo, expected):
+        from app.services.mirror_service import _to_ssh_url
+        assert _to_ssh_url(repo) == expected
+
+    def test_gitee_has_no_ssh_fallback(self):
+        from app.services.mirror_service import _to_ssh_url
+        assert _to_ssh_url("https://gitee.com/owner/repo") == ""
+
+
+class TestMirrorPathSuffixStripping:
+
+    @pytest.mark.parametrize("repo,expected", [
+        ("https://github.com/lqs_linzh/unmanned-vehicle-project",
+         "unmanned-vehicle-project.git"),
+        ("https://github.com/a/mygit", "mygit.git"),
+        ("https://github.com/a/project.git", "project.git"),
+        ("https://github.com/a/tigg", "tigg.git"),
+    ])
+    def test_only_dot_git_suffix_stripped(self, repo, expected, mirrors_dir):
+        from app.services.mirror_service import mirror_path
+        assert mirror_path(repo, mirror_dir=str(mirrors_dir)).name == expected
+
+
+class TestBrokenMirrorNotReusedAsCache:
+    """空壳镜像（有 HEAD 文件但零 commit）必须重建，不得当成有效缓存复用。"""
+
+    def test_mirror_without_refs_is_rebuilt(self, origin_repo, mirrors_dir):
+        from app.services.mirror_service import ensure_mirror
+        broken = mirrors_dir / "origin.git"
+        broken.mkdir(parents=True)
+        (broken / "HEAD").write_text("ref: refs/heads/main\n")
+
+        path = ensure_mirror(str(origin_repo), mirror_dir=str(mirrors_dir))
+
+        refs = subprocess.run(
+            ["git", "for-each-ref"], capture_output=True, text=True, cwd=str(path),
+        ).stdout.strip()
+        assert refs, "空壳镜像应被重建为含 ref 的可用镜像"
+
+    def test_valid_mirror_still_reused(self, origin_repo, mirrors_dir):
+        from app.services.mirror_service import ensure_mirror
+        first = ensure_mirror(str(origin_repo), mirror_dir=str(mirrors_dir))
+        marker = first / "REUSE_MARKER"
+        marker.write_text("x")
+
+        again = ensure_mirror(str(origin_repo), mirror_dir=str(mirrors_dir))
+
+        assert again == first
+        assert marker.exists(), "有效镜像不应被删除重建"
+
+
+class TestSshFallbackSuccessReturns:
+
+    def test_ssh_fallback_success_returns_path(self, origin_repo, mirrors_dir, monkeypatch):
+        import app.services.mirror_service as ms
+        real_run_git = ms._run_git
+        calls = []
+
+        def fake_run_git(cwd, *args, **kwargs):
+            if args and args[0] == "clone":
+                calls.append(args)
+                if len(calls) == 1:
+                    raise ms.GitMirrorError("HTTPS 克隆失败")
+                return real_run_git(cwd, "clone", "--mirror", str(origin_repo), args[-1])
+            return real_run_git(cwd, *args, **kwargs)
+
+        monkeypatch.setattr(ms, "_run_git", fake_run_git)
+        monkeypatch.setattr(ms, "_to_ssh_url", lambda r: "git@ssh.github.com:443:o/r.git")
+
+        path = ms.ensure_mirror("https://github.com/o/r", mirror_dir=str(mirrors_dir))
+
+        assert len(calls) == 2, "应先试 HTTPS 再回退 SSH"
+        assert path.exists()
+
+
 class TestExtractDayActivity:
 
     def test_counts_todays_commits_with_numstat(self, origin_repo, mirrors_dir):
