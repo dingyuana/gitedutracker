@@ -174,6 +174,24 @@ def extract_day_activity(
     }
 
 
+def repo_total_loc(repo: str, mirror_dir: str | None = None) -> int:
+    """从本地镜像统计仓库全量累计代码行数（所有提交 add+del 之和，二进制跳过）。
+
+    全项目综合评测（B 方案）用于衡量学生整个项目周期的代码产出量。
+    """
+    path = ensure_mirror(repo, mirror_dir)
+    log_raw = _run_git(path, "log", "--all", "--numstat", "--format=")
+    total = 0
+    for line in log_raw.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        add_s, del_s = parts[0], parts[1]
+        if add_s.isdigit() and del_s.isdigit():
+            total += int(add_s) + int(del_s)
+    return total
+
+
 def extract_snapshot(
     repo: str,
     mirror_dir: str | None = None,

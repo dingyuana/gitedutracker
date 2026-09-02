@@ -83,6 +83,10 @@ class Assessment(SQLModel, table=True):
     student_id: int = Field(foreign_key='student.id')
     project_id: int = Field(foreign_key='project.id')
     date: date
+    # 评测类型：diff=当日变更评审（默认），full=全项目综合评测
+    eval_type: str = Field(default="diff", max_length=16)
+    # 超出设计要求的功能加分（full 模式，0-15）
+    bonus_score: Optional[float] = None
     quality_score: Optional[float] = None
     match_score: Optional[float] = None
     volume_score: Optional[float] = None
@@ -98,7 +102,7 @@ class Assessment(SQLModel, table=True):
     created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
     evaluated_at: Optional[datetime] = None
 
-    __table_args__ = (UniqueConstraint('student_id', 'project_id', 'date'),)
+    __table_args__ = (UniqueConstraint('student_id', 'project_id', 'date', 'eval_type'),)
 
 
 class ScoringConfig(SQLModel, table=True):

@@ -106,7 +106,7 @@
                         <label>评审模式</label>
                         <select name="eval_mode">
                             <option value="diff">A · 当日变更评审</option>
-                            <option value="full">B · 全项目代码审核</option>
+                            <option value="full">B · 全项目综合评测</option>
                         </select>
                     </div>
                     <div class="form-group" style="margin-bottom:0.75rem">
@@ -154,6 +154,19 @@
         var checked = document.querySelector('input[name="plan"]:checked');
         return checked ? checked.value : "";
     }
+
+    function syncPlanLock() {
+        var mode = document.getElementById("eval-form").elements["eval_mode"].value;
+        var locked = mode === "full";
+        document.querySelectorAll('input[name="plan"]').forEach(function (r) {
+            r.disabled = locked;
+            if (locked && !r.value) r.checked = true;
+        });
+    }
+    document.getElementById("eval-form").addEventListener("change", function (e) {
+        if (e.target && e.target.name === "eval_mode") syncPlanLock();
+    });
+    syncPlanLock();
 
     document.getElementById("eval-start-btn").addEventListener("click", function () {
         var form = document.getElementById("eval-form");

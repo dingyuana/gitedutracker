@@ -902,8 +902,9 @@ def run_project_eval(
         return JSONResponse({"busy": True, "error": "已有评测任务正在进行，请稍后再试"},
                             status_code=409)
     target_date = datetime.date.fromisoformat(date) if date else _date.today()
+    eval_mode_final = eval_mode if eval_mode in ("diff", "full") else "diff"
     pid = None
-    if plan_id and str(plan_id).strip().isdigit():
+    if eval_mode_final == "diff" and plan_id and str(plan_id).strip().isdigit():
         pid = int(plan_id)
         # 指定计划时，使用计划自身的日期（计划可能不是今天的）
         plan_row = session.get(DailyPlan, pid)
@@ -916,7 +917,7 @@ def run_project_eval(
         target_date,
         project_id=project_id,
         only_missing=str(only_missing).lower() in ("1", "true", "on"),
-        eval_mode=eval_mode if eval_mode in ("diff", "full") else "diff",
+        eval_mode=eval_mode_final,
         plan_id=pid,
         sample_size=sample,
         send_email=str(send_email).lower() in ("1", "true", "on"),

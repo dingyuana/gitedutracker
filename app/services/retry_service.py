@@ -28,6 +28,7 @@ def _attempt_score(
     """
     max_attempts = 3
     ctx_dict = json.loads(context) if isinstance(context, str) else context
+    eval_type = ctx_dict.get("eval_mode") or "diff"
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -46,6 +47,7 @@ def _attempt_score(
             q = select(Assessment).where(
                 Assessment.student_id == student_id,
                 Assessment.date == query_date,
+                Assessment.eval_type == eval_type,
             )
             if proj_id is not None:
                 q = q.where(Assessment.project_id == proj_id)
@@ -58,6 +60,7 @@ def _attempt_score(
             assessment.match_score = subscores.get("match_score")
             assessment.schedule_status = subscores.get("schedule_status", "ontime")
             assessment.total_score = total_score
+            assessment.bonus_score = subscores.get("bonus")
             assessment.comment = subscores.get("comment", "")
             assessment.evaluated_at = datetime.now(timezone.utc)
             assessment.saved_context_json = context

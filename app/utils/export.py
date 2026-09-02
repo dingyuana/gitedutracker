@@ -37,6 +37,7 @@ def export_daily(target_date: date, session: Optional[Session] = None) -> bytes:
             GithubActivity,
             (GithubActivity.student_id == Assessment.student_id)
             & (GithubActivity.date == Assessment.date),
+            isouter=True,
         )
         .where(Assessment.date == target_date)
         .where(Assessment.status == 'done')

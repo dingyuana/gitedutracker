@@ -34,4 +34,5 @@ def compute_final(subscores: dict[str, Any], config: ScoringConfig) -> float:
     else:
         adjustment = 0.0
 
-    return round(base_score + adjustment, 2)
+    bonus = subscores.get('bonus', 0) or 0
+    return min(100.0, round(base_score + adjustment + bonus, 2))

@@ -24,6 +24,8 @@ REQUIRED_FIELDS = (
     "reasoning",
 )
 
+FULL_REQUIRED_FIELDS = REQUIRED_FIELDS + ("beyond_requirements", "bonus")
+
 SYSTEM_PROMPT = (
     "你是一个严格的代码评审导师。根据学生当天布置的任务、GitHub 活动以及提供的真实代码，"
     "评估质量、匹配度、完成情况，并生成四段式鼓励评语。\n"
@@ -39,6 +41,26 @@ SYSTEM_PROMPT = (
     "严格返回 JSON，格式：\n"
     '{"quality_score": 0-100, "match_score": 0-100, "completion": true/false, '
     '"schedule_status": "ahead|ontime|behind", '
+    '"comment": "四段中文评语", "reasoning": "评估依据"}'
+)
+
+FULL_SYSTEM_PROMPT = (
+    "你是一个严格的代码评审导师，正在对学生进行「全项目综合评测」：把项目前期布置的全部任务"
+    "（在「阶段综合任务」中给出）综合为一个完整任务，评测学生当前提交的完整代码是否符合整体要求。\n"
+    "语言要求：评语和 reasoning 一律使用简体中文撰写，严禁使用韩文、日文、英文或其他外语，"
+    "仅允许在技术术语（如 STM32、USART、GPIO 等）中使用英文字母。\n"
+    "评测要点：\n"
+    "1. 将「阶段综合任务」作为完整需求清单，对照「项目代码快照」逐项评估整体完成度、架构设计、"
+    "模块划分、代码一致性、边界处理与可读性，而不是只关注某一天的提交。\n"
+    "2. 特别分析学生代码中是否包含超出项目设计要求的部分功能（beyond_requirements），"
+    "例如额外模块、自定义特性、工程化改进、单元测试等；有则列出并在 0-15 范围内给出合理加分"
+    "（bonus），无则 beyond_requirements 返回空数组、bonus 返回 0。\n"
+    "3. 进度(schedule_status/completion)依据整体实现情况对照全部任务判断。\n"
+    "4. 鼓励性要求：评语要比逐日评测更充分地肯定学生在整个项目周期中的坚持与成长，语气更积极、更有力。\n"
+    "严格返回 JSON，格式：\n"
+    '{"quality_score": 0-100, "match_score": 0-100, "completion": true/false, '
+    '"schedule_status": "ahead|ontime|behind", '
+    '"beyond_requirements": ["超出设计的功能描述", ...], "bonus": 0-15, '
     '"comment": "四段中文评语", "reasoning": "评估依据"}'
 )
 
@@ -63,6 +85,8 @@ def _truncate_context(commits: list[dict], max_chars: int) -> list[dict]:
 
 
 def _build_user_message(context: dict[str, Any], truncated: bool = False) -> str:
+    if context.get("eval_mode") == "full":
+        return _build_full_user_message(context)
     plan_content = context.get("plan_content", "")
     commits = context.get("commits", [])
     prs_opened = context.get("prs_opened", 0)
@@ -107,6 +131,25 @@ def _build_user_message(context: dict[str, Any], truncated: bool = False) -> str
     return "\n".join(lines)
 
 
+def _build_full_user_message(context: dict[str, Any]) -> str:
+    plan_content = context.get("plan_content", "")
+    loc_additions = context.get("loc_additions", 0)
+
+    lines = [f"阶段综合任务：{plan_content}"]
+    lines.append(f"- 学生项目累计代码量：约 {loc_additions} 行（全部提交增删之和）")
+    lines.append("- 本次为全项目综合评测，无单日 diff，请以整体实现为依据评分")
+
+    project_files = context.get("project_files") or []
+    if project_files:
+        lines.append("")
+        lines.append("项目当前代码快照（据此评估整体质量与超出设计要求的功能）：")
+        for f in project_files:
+            lines.append(f"=== {f['path']}{'（截断）' if f.get('truncated') else ''} ===")
+            lines.append(str(f.get("content", ""))[:1500])
+
+    return "\n".join(lines)
+
+
 def _is_chinese(text: str) -> bool:
     """判断评语是否以简体中文为主。
 
@@ -123,8 +166,9 @@ def _is_chinese(text: str) -> bool:
     return hanzi > 0
 
 
-def _validate_response(data: dict) -> dict:
-    for field in REQUIRED_FIELDS:
+def _validate_response(data: dict, is_full: bool = False) -> dict:
+    required = FULL_REQUIRED_FIELDS if is_full else REQUIRED_FIELDS
+    for field in required:
         if field not in data:
             raise LLMInvalidResponse(f"字段缺失: {field}")
 
@@ -156,6 +200,18 @@ def _validate_response(data: dict) -> dict:
     if not data["reasoning"]:
         raise LLMInvalidResponse("reasoning 不能为空")
 
+    if is_full:
+        if not isinstance(data["beyond_requirements"], list):
+            raise LLMInvalidResponse(
+                f"beyond_requirements 类型错误: 期望 list，得到 {type(data['beyond_requirements']).__name__}"
+            )
+        if not all(isinstance(x, str) for x in data["beyond_requirements"]):
+            raise LLMInvalidResponse("beyond_requirements 元素必须为 str")
+        if not isinstance(data["bonus"], int):
+            raise LLMInvalidResponse(f"bonus 类型错误: 期望 int，得到 {type(data['bonus']).__name__}")
+        if not (0 <= data["bonus"] <= 15):
+            raise LLMInvalidResponse(f"bonus 越界(应为 0-15): {data['bonus']}")
+
     return data
 
 
@@ -170,23 +226,28 @@ def score_student(context: dict[str, Any], settings: Settings) -> dict:
         解析并校验后的评分 JSON dict
     """
     max_chars = getattr(settings, "llm_context_max_chars", 12000)
-    commits = context.get("commits", [])
-    truncated_commits = _truncate_context(commits, max_chars)
-    is_truncated = len(truncated_commits) < len(commits) or (
-        len(commits) > 0
-        and sum(
-            len(c.get("message", "")) + len(str(c.get("additions", 0))) + len(str(c.get("deletions", 0)))
-            for c in commits
-        ) > max_chars
-    )
-    user_message = _build_user_message({**context, "commits": truncated_commits}, truncated=is_truncated)
+    is_full = context.get("eval_mode") == "full"
+    if not is_full:
+        commits = context.get("commits", [])
+        truncated_commits = _truncate_context(commits, max_chars)
+        is_truncated = len(truncated_commits) < len(commits) or (
+            len(commits) > 0
+            and sum(
+                len(c.get("message", "")) + len(str(c.get("additions", 0))) + len(str(c.get("deletions", 0)))
+                for c in commits
+            ) > max_chars
+        )
+        context = {**context, "commits": truncated_commits}
+    else:
+        is_truncated = False
+    user_message = _build_user_message(context, truncated=is_truncated)
 
     client = OpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key,
                     timeout=180.0, max_retries=1)
     response = client.chat.completions.create(
         model=settings.llm_model,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": FULL_SYSTEM_PROMPT if is_full else SYSTEM_PROMPT},
             {"role": "user", "content": user_message},
         ],
         response_format={"type": "json_object"},
@@ -204,4 +265,4 @@ def score_student(context: dict[str, Any], settings: Settings) -> dict:
     if not isinstance(data, dict):
         raise LLMInvalidResponse(f"LLM 返回不是 JSON 对象，得到 {type(data).__name__}")
 
-    return _validate_response(data)
+    return _validate_response(data, is_full=is_full)
