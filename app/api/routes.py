@@ -7,10 +7,10 @@ from sqlmodel import Session, select, delete
 
 from app.database import get_session
 from app.models import Student, Project, DailyPlan, GithubActivity, Assessment, ScoringConfig
-from app.utils.export import export_daily
+from app.utils.export import export_daily, export_project_assessments
 from app.services.import_service import import_students
 from app.services.pipeline import run_today
-from app.services.eval_jobs import start_eval_job, get_job, is_running
+from app.services.eval_jobs import start_eval_job, is_running
 from app.middleware.auth import require_auth, login_endpoint, security
 
 router = APIRouter()
@@ -503,6 +503,22 @@ def project_assessments_page(
     })
 
 
+@router.get("/projects/{project_id}/assessments/export")
+def project_assessments_export(
+    project_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    project, _ = _load_project_ctx(session, project_id)
+    xlsx_bytes = export_project_assessments(project_id, session)
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f"attachment; filename=project_{project_id}_assessments.xlsx"},
+    )
+
+
 @router.post("/projects/{project_id}/complete", response_class=HTMLResponse)
 def complete_project(
     request: Request,
@@ -530,28 +546,6 @@ def reopen_project(
     if project is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     project.status = "active"
-    session.add(project)
-    session.commit()
-    return RedirectResponse(url="/", status_code=303)
-
-
-@router.post("/projects", response_class=HTMLResponse)
-def create_project_page(
-    request: Request,
-    auth_check=Depends(require_auth),
-    name: str = Form(...),
-    description: str = Form(""),
-    start_date: str = Form(""),
-    end_date: str = Form(""),
-    session: Session = Depends(get_session),
-):
-    project = Project(name=name.strip())
-    if description.strip():
-        project.description = description.strip()
-    if start_date.strip():
-        project.start_date = datetime.date.fromisoformat(start_date.strip())
-    if end_date.strip():
-        project.end_date = datetime.date.fromisoformat(end_date.strip())
     session.add(project)
     session.commit()
     return RedirectResponse(url="/", status_code=303)
@@ -604,7 +598,6 @@ def delete_project_page(
     project = session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="项目不存在")
-    from app.models import GithubActivity
     for plan in session.exec(select(DailyPlan).where(DailyPlan.project_id == project_id)).all():
         session.delete(plan)
     for assessment in session.exec(select(Assessment).where(Assessment.project_id == project_id)).all():
@@ -845,11 +838,13 @@ async def run_today_endpoint(
     form_data: dict = {}
     if "form" in request.headers.get("content-type", ""):
         form = await request.form()
-        form_data = {k: form.get(k) for k in ("date", "only_missing", "redirect", "eval_mode")}
+        form_data = {k: form.get(k) for k in ("date", "only_missing", "redirect", "eval_mode", "send_email")}
 
     date = qp.get("date") or form_data.get("date")
     only_missing_raw = qp.get("only_missing") if qp.get("only_missing") is not None else form_data.get("only_missing")
     only_missing = str(only_missing_raw).lower() in ("1", "true", "on") if only_missing_raw is not None else False
+    send_email_raw = qp.get("send_email") if qp.get("send_email") is not None else form_data.get("send_email")
+    send_email = str(send_email_raw).lower() in ("1", "true", "on") if send_email_raw is not None else False
     eval_mode = str(form_data.get("eval_mode") or qp.get("eval_mode") or "diff").strip().lower()
     if eval_mode not in ("diff", "full"):
         eval_mode = "diff"
@@ -868,7 +863,7 @@ async def run_today_endpoint(
         target_date = _date.today()
 
     result = run_today(target_date, session=session, only_missing=only_missing, eval_mode=eval_mode,
-                       sample_size=sample_size)
+                       sample_size=sample_size, send_email=send_email)
 
     if str(form_data.get("redirect", "")).lower() in ("1", "true"):
         return RedirectResponse(url=f"/results?date={target_date}", status_code=303)
@@ -900,6 +895,7 @@ def run_project_eval(
     only_missing: str = Form("0"),
     plan_id: str = Form(None),
     sample_size: str = Form(None),
+    send_email: str = Form("0"),
     session: Session = Depends(get_session),
 ):
     if is_running():
@@ -923,6 +919,7 @@ def run_project_eval(
         eval_mode=eval_mode if eval_mode in ("diff", "full") else "diff",
         plan_id=pid,
         sample_size=sample,
+        send_email=str(send_email).lower() in ("1", "true", "on"),
     )
     return JSONResponse({"job_id": job_id})
 

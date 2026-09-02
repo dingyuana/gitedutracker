@@ -6,6 +6,10 @@
     {{ project.name }} · 评测记录
 </h1>
 
+<div class="form-actions" style="margin-bottom:0.75rem">
+    <a class="btn btn-small btn-primary" href="/projects/{{ project.id }}/assessments/export">📥 导出 Excel</a>
+</div>
+
 {% if assessments_by_date %}
 {% for a_date, items, plan_content in assessments_by_date %}
 <details class="card" {% if loop.first %}open{% endif %}>

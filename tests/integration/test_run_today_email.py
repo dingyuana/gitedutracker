@@ -127,7 +127,7 @@ class TestRunTodayTriggersEmail:
         mock_score_student.return_value = mock_ai_response
         mock_send_daily_comments.return_value = None
 
-        run_today(seed_data['target'], session=session)
+        run_today(seed_data['target'], session=session, send_email=True)
 
         mock_send_daily_comments.assert_called_once_with(
             seed_data['target'], session
@@ -146,7 +146,7 @@ class TestRunTodayTriggersEmail:
         mock_score_student.return_value = mock_ai_response
         mock_send_daily_comments.return_value = None
 
-        run_today(seed_data['target'], session=session)
+        run_today(seed_data['target'], session=session, send_email=True)
 
         call_args = mock_send_daily_comments.call_args
         assert call_args[0][0] == seed_data['target']
@@ -168,7 +168,7 @@ class TestEmailFailureDoesNotAffectScoring:
         mock_score_student.return_value = mock_ai_response
         mock_send_daily_comments.side_effect = Exception("SMTP failure")
 
-        result = run_today(seed_data['target'], session=session)
+        result = run_today(seed_data['target'], session=session, send_email=True)
 
         assert result["success"] >= 1
         assert result["failed"] == 0
@@ -194,7 +194,7 @@ class TestEmailFailureDoesNotAffectScoring:
         mock_score_student.return_value = mock_ai_response
         mock_send_daily_comments.side_effect = ConnectionError("network down")
 
-        result = run_today(seed_data['target'], session=session)
+        result = run_today(seed_data['target'], session=session, send_email=True)
 
         assert result["success"] >= 1
         assessments = session.exec(

@@ -72,6 +72,10 @@
             <label>抽样人数
                 <input type="number" id="eval-sample-input" min="1" max="200" value="" placeholder="留空=全部">
             </label>
+            <label>发送邮件
+                <input type="checkbox" id="eval-email-input">
+                <span style="font-size:0.75rem;color:var(--text-muted)">勾选则评测完成后向学生发送评估邮件（默认不发送）</span>
+            </label>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn" id="eval-modal-cancel">取消</button>
@@ -249,6 +253,7 @@
         fd.append("date", document.getElementById("eval-date-input").value);
         fd.append("eval_mode", document.getElementById("eval-mode-input").value);
         fd.append("only_missing", document.getElementById("eval-scope-input").value);
+        fd.append("send_email", document.getElementById("eval-email-input").checked ? "1" : "0");
         const selPlan = document.getElementById("eval-plan-input").value;
         if (selPlan) fd.append("plan_id", selPlan);
         const ss = document.getElementById("eval-sample-input").value.trim();

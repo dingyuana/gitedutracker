@@ -499,6 +499,37 @@ class TestOnlyMissingScope:
 
         assert mock_score_student.call_count == 3
 
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_full_reeval_retries_failed(self, mock_sync_day, mock_score_student,
+                                        mock_send_daily, session, seed_data,
+                                        mock_settings, mock_ai_response):
+        """全部重评（only_missing=False）时，上次 failed 的学生也会被重新检测。"""
+        from app.services.pipeline import run_today
+        target = seed_data['target']
+        session.add(Assessment(
+            student_id=seed_data['s1'].id,
+            project_id=seed_data['p1'].id,
+            date=target,
+            status="failed",
+            attempts=1,
+        ))
+        session.commit()
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        run_today(target, session=session, only_missing=False)
+
+        assert mock_score_student.call_count == 3
+        done_pairs = {
+            (a.student_id, a.project_id)
+            for a in session.exec(select(Assessment).where(Assessment.date == target)).all()
+            if a.status == "done"
+        }
+        assert (seed_data['s1'].id, seed_data['p1'].id) in done_pairs
+
 
 class TestEvalModes:
 
@@ -621,6 +652,73 @@ class TestProjectScopedRun:
         assert dones == sorted(dones)
         assert events[-1][0] == events[-1][1] == 3
         assert all(isinstance(e[2], str) and e[2] for e in scoring_events)
+
+
+class TestAllPlansCoverAllDates:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_project_all_plans_covers_all_dates(self, mock_sync_day, mock_score_student,
+                                                mock_send_daily, session, mock_settings,
+                                                mock_ai_response):
+        """项目评测选择「全部计划」(plan_id=None) 时，应覆盖该项目所有日期的所有计划。"""
+        from app.services.pipeline import run_today
+        p1 = Project(name='项目一')
+        session.add(p1); session.commit(); session.refresh(p1)
+
+        sa = Student(name='甲', email='pa@x.com', github_repo='a/r', project_id=p1.id)
+        sb = Student(name='乙', email='pb@x.com', github_repo='b/r', project_id=p1.id)
+        session.add_all([sa, sb]); session.commit()
+        for s_ in [sa, sb]:
+            session.refresh(s_)
+
+        d1 = date(2026, 8, 21)
+        d2 = date(2026, 8, 22)
+        session.add(DailyPlan(project_id=p1.id, date=d1, content='任务一', student_id=None))
+        session.add(DailyPlan(project_id=p1.id, date=d2, content='任务二', student_id=None))
+        session.add(ScoringConfig())
+        for s_ in [sa, sb]:
+            for d in [d1, d2]:
+                session.add(GithubActivity(student_id=s_.id, date=d, commits_count=1, status="ok"))
+        session.commit()
+
+        mock_sync_day.return_value = 1
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(d1, session=session, project_id=p1.id)
+
+        assert result["success"] == 4
+        assert result["failed"] == 0
+        dates = {a.date for a in session.exec(select(Assessment)).all()}
+        assert dates == {d1, d2}
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_global_run_today_still_only_scores_target_date(self, mock_sync_day, mock_score_student,
+                                                            mock_send_daily, session, seed_data,
+                                                            mock_settings, mock_ai_response):
+        """全局「今日评测」（无 project_id）不受影响：仍只评测 target_date 当天的计划。"""
+        from app.services.pipeline import run_today
+        target = seed_data['target']
+        other = date(2026, 8, 22)
+        session.add(DailyPlan(project_id=seed_data['p1'].id, date=other,
+                              content='其他日期计划', student_id=None))
+        session.add(GithubActivity(student_id=seed_data['s1'].id, date=other,
+                                   commits_count=1, status="ok"))
+        session.commit()
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(target, session=session)
+
+        assert result["success"] == 3
+        dates = {a.date for a in session.exec(select(Assessment)).all()}
+        assert dates == {target}
 
 
 class TestScoreKeyMapping:
@@ -877,3 +975,53 @@ class TestConcurrentSerialization:
         assert len(results) == 3
         assert max_active == 1
         assert all(r["success"] == 1 for r in results)
+
+
+class TestRunTodaySendEmailToggle:
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_send_email_false_skips_email(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                          session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        result = run_today(seed_data['target'], session=session, send_email=False)
+
+        assert result["success"] >= 1
+        mock_send_daily.assert_not_called()
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_send_email_true_sends_email(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                         session, seed_data, mock_settings, mock_ai_response):
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        run_today(seed_data['target'], session=session, send_email=True)
+
+        mock_send_daily.assert_called_once_with(seed_data['target'], session)
+
+    @patch("app.services.pipeline.send_daily_comments")
+    @patch("app.services.pipeline.score_student")
+    @patch("app.services.pipeline.sync_day")
+    def test_send_email_defaults_to_false(self, mock_sync_day, mock_score_student, mock_send_daily,
+                                          session, seed_data, mock_settings, mock_ai_response):
+        """不传 send_email 时默认不发送邮件。"""
+        from app.services.pipeline import run_today
+
+        mock_sync_day.return_value = 2
+        mock_score_student.return_value = mock_ai_response
+        mock_send_daily.return_value = None
+
+        run_today(seed_data['target'], session=session)
+
+        mock_send_daily.assert_not_called()

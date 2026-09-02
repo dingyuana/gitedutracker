@@ -332,6 +332,20 @@ class TestPostRunToday:
             _, kwargs = mock_run.call_args
             assert kwargs.get("only_missing") is True
 
+    def test_send_email_false_passed_to_pipeline(self, app, db_session):
+        with patch("app.api.routes.run_today") as mock_run:
+            mock_run.return_value = {"success": 0, "failed": 0, "details": []}
+            app.post("/run-today", data={"date": "2026-08-21", "send_email": "0"})
+            _, kwargs = mock_run.call_args
+            assert kwargs.get("send_email") is False
+
+    def test_send_email_defaults_to_false_in_pipeline(self, app, db_session):
+        with patch("app.api.routes.run_today") as mock_run:
+            mock_run.return_value = {"success": 0, "failed": 0, "details": []}
+            app.post("/run-today", data={"date": "2026-08-21"})
+            _, kwargs = mock_run.call_args
+            assert kwargs.get("send_email") is False
+
     def test_eval_mode_passed_to_pipeline(self, app):
         with patch("app.api.routes.run_today") as mock_run:
             mock_run.return_value = {"success": 0, "failed": 0, "details": []}
@@ -359,6 +373,31 @@ class TestPostRunToday:
         _, args, kwargs = mock_start.mock_calls[0]
         assert kwargs.get("project_id") == seed_data['p1'].id
         assert kwargs.get("eval_mode") == "full"
+
+    def test_project_eval_send_email_false_passed_to_job(self, app, seed_data):
+        with patch("app.api.routes.start_eval_job") as mock_start:
+            mock_start.return_value = "job123"
+            resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": str(seed_data['target']),
+                "eval_mode": "diff",
+                "only_missing": "0",
+                "send_email": "0",
+            })
+        assert resp.status_code == 200
+        _, args, kwargs = mock_start.mock_calls[0]
+        assert kwargs.get("send_email") is False
+
+    def test_project_eval_send_email_defaults_to_false(self, app, seed_data):
+        with patch("app.api.routes.start_eval_job") as mock_start:
+            mock_start.return_value = "job123"
+            resp = app.post(f"/projects/{seed_data['p1'].id}/run-eval", data={
+                "date": str(seed_data['target']),
+                "eval_mode": "diff",
+                "only_missing": "0",
+            })
+        assert resp.status_code == 200
+        _, args, kwargs = mock_start.mock_calls[0]
+        assert kwargs.get("send_email") is False
 
     def test_project_eval_endpoint_passes_plan_id(self, app, seed_data):
         with patch("app.api.routes.start_eval_job") as mock_start:
@@ -1150,3 +1189,59 @@ class TestClearStudents:
         resp = app.get("/students")
         assert resp.status_code == 200
         assert "清空全部" in resp.text
+
+
+class TestAssessmentsExport:
+
+    def _seed(self, db_session, seed_data):
+        from datetime import timedelta
+        t = seed_data['target']
+        a1 = Assessment(student_id=seed_data['s1'].id, project_id=seed_data['p1'].id,
+                        date=t, total_score=88.5, quality_score=9.0, match_score=8.0,
+                        schedule_status='ontime', comment='评语A', status='done')
+        a2 = Assessment(student_id=seed_data['s2'].id, project_id=seed_data['p1'].id,
+                        date=t, total_score=76.0, quality_score=7.5, match_score=7.0,
+                        schedule_status='behind', comment='评语B', status='done')
+        db_session.add_all([a1, a2])
+        db_session.commit()
+
+    def test_export_returns_xlsx_with_expected_sheets(self, app, db_session, seed_data):
+        self._seed(db_session, seed_data)
+        resp = app.get(f"/projects/{seed_data['p1'].id}/assessments/export")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        import io
+        import pandas as pd
+        xl = pd.ExcelFile(io.BytesIO(resp.content), engine='openpyxl')
+        assert xl.sheet_names[0] == '分数总览'
+        assert str(seed_data['target']) in xl.sheet_names
+
+    def test_export_filename_contains_project_assessments(self, app, db_session, seed_data):
+        self._seed(db_session, seed_data)
+        resp = app.get(f"/projects/{seed_data['p1'].id}/assessments/export")
+        assert 'content-disposition' in {k.lower() for k in resp.headers.keys()}
+        cd = resp.headers["content-disposition"]
+        assert "attachment" in cd
+        assert "xlsx" in cd
+
+    def test_export_overview_has_average_row(self, app, db_session, seed_data):
+        self._seed(db_session, seed_data)
+        resp = app.get(f"/projects/{seed_data['p1'].id}/assessments/export")
+        import io
+        import pandas as pd
+        df = pd.read_excel(io.BytesIO(resp.content), sheet_name='分数总览',
+                           index_col=0, engine='openpyxl')
+        assert '每日平均' in df.index
+        assert '平均分' in df.columns
+        assert df.loc['每日平均', str(seed_data['target'])] == pytest.approx((88.5 + 76.0) / 2)
+
+    def test_export_nonexistent_project_returns_404(self, app):
+        resp = app.get("/projects/9999/assessments/export")
+        assert resp.status_code == 404
+
+    def test_assessments_page_has_export_button(self, app, db_session, seed_data):
+        self._seed(db_session, seed_data)
+        resp = app.get(f"/projects/{seed_data['p1'].id}/assessments")
+        assert resp.status_code == 200
+        assert "/assessments/export" in resp.text

@@ -33,15 +33,18 @@ def run_today(
     plan_id: Optional[int] = None,
     sample_size: int = None,
     progress_cb=None,
+    send_email: bool = False,
 ) -> dict:
     """Run the full auto-scoring pipeline for a given date.
 
     1. Sync GitHub activity for all students.
     2. Find all applicable DailyPlans for the date.
     3. For each (student, project, date) combo: score → compute → persist.
-       only_missing=True 时跳过已有 done 评测的组合（failed 仍会重试）。
+       only_missing=True 时跳过已有 done 评测的组合（failed 仍会重试，
+       即上次检测失败的学生仍会被重新检测）。
        eval_mode="diff" 附带当日真实 diff；"full" 附带全项目代码快照。
        plan_id 指定后仅使用该计划的当日评测目标。
+       send_email=True 时评测完成后发送评估邮件（默认 False 不发送）。
     4. LLM failures are caught and stored as failed with retry info.
 
     Returns:
@@ -50,7 +53,7 @@ def run_today(
     with _run_lock:
         return _run_today(
             target_date, session, only_missing, eval_mode,
-            project_id, plan_id, sample_size, progress_cb,
+            project_id, plan_id, sample_size, progress_cb, send_email,
         )
 
 
@@ -63,6 +66,7 @@ def _run_today(
     plan_id: Optional[int],
     sample_size: int,
     progress_cb,
+    send_email: bool = False,
 ) -> dict:
     if session is None:
         from app.database import get_session
@@ -76,9 +80,13 @@ def _run_today(
     student_map = {s.id: s for s in all_students}
 
     # Step 1: build (student, plan) pairs first — sync scope derives from pairs
-    plan_q = select(DailyPlan).where(DailyPlan.date == target_date)
+    plan_q = select(DailyPlan)
     if plan_id is not None:
         plan_q = plan_q.where(DailyPlan.id == plan_id)
+    elif project_id is not None:
+        plan_q = plan_q.where(DailyPlan.project_id == project_id)
+    else:
+        plan_q = plan_q.where(DailyPlan.date == target_date)
     all_plans = session.exec(plan_q).all()
 
     pairs: list[tuple[Student, DailyPlan]] = []
@@ -112,23 +120,26 @@ def _run_today(
     skipped_existing = 0
 
     done_keys = set()
-    if only_missing:
+    involved_dates = sorted({p_.date for _, p_ in pairs})
+    if only_missing and involved_dates:
         done_keys = {
-            (a.student_id, a.project_id)
+            (a.student_id, a.project_id, a.date)
             for a in session.exec(
                 select(Assessment).where(
-                    Assessment.date == target_date, Assessment.status == "done"
+                    Assessment.status == "done",
+                    Assessment.date.in_(involved_dates),
                 )
             ).all()
         }
 
     pairs = [(s_, p_) for s_, p_ in pairs
-             if not (only_missing and (s_.id, p_.project_id) in done_keys)]
+             if not (only_missing and (s_.id, p_.project_id, p_.date) in done_keys)]
     total_to_score = len(pairs)
 
-    # Step 2: sync GitHub activity ONLY for paired students
+    # Step 2: sync GitHub activity ONLY for paired students (per involved date)
     target_students = list({s_.id: s_ for s_, _ in pairs}.values())
-    sync_day(target_date, session, students=target_students)
+    for d in sorted({p_.date for _, p_ in pairs}):
+        sync_day(d, session, students=target_students)
 
     scored_count = 0
 
@@ -139,13 +150,13 @@ def _run_today(
             pass
 
     for student, plan in pairs:
-        if only_missing and (student.id, plan.project_id) in done_keys:
+        if only_missing and (student.id, plan.project_id, plan.date) in done_keys:
             skipped_existing += 1
             continue
         activity = session.exec(
             select(GithubActivity).where(
                 GithubActivity.student_id == student.id,
-                GithubActivity.date == target_date,
+                GithubActivity.date == plan.date,
             )
         ).first()
 
@@ -157,18 +168,18 @@ def _run_today(
                 select(Assessment).where(
                     Assessment.student_id == student.id,
                     Assessment.project_id == plan.project_id,
-                    Assessment.date == target_date,
+                    Assessment.date == plan.date,
                 )
             ).first()
             if assessment is None:
-                assessment = Assessment(student_id=student.id, project_id=plan.project_id, date=target_date)
+                assessment = Assessment(student_id=student.id, project_id=plan.project_id, date=plan.date)
                 session.add(assessment)
             assessment.status = "failed"
             assessment.total_score = 0
             assessment.quality_score = 0
             assessment.match_score = 0
             assessment.schedule_status = "ontime"
-            assessment.comment = f"{target_date} {reason}。"
+            assessment.comment = f"{plan.date} {reason}。"
             assessment.evaluated_at = datetime.now(timezone.utc)
             session.commit()
             failed_count += 1
@@ -176,18 +187,18 @@ def _run_today(
 
         if eval_mode != "full" and activity.commits_count == 0 \
                 and (activity.loc_additions + activity.loc_deletions) == 0:
-            empty_comment = (f"{target_date} 今天没有看到你的代码提交。没关系的，有时候是在思考、"
+            empty_comment = (f"{plan.date} 今天没有看到你的代码提交。没关系的，有时候是在思考、"
                              f"调试或者遇到了困难。如果有什么问题或卡住了，随时可以告诉我，"
                              f"我们一起分析解决，别灰心，加油！")
             assessment = session.exec(
                 select(Assessment).where(
                     Assessment.student_id == student.id,
                     Assessment.project_id == plan.project_id,
-                    Assessment.date == target_date,
+                    Assessment.date == plan.date,
                 )
             ).first()
             if assessment is None:
-                assessment = Assessment(student_id=student.id, project_id=plan.project_id, date=target_date)
+                assessment = Assessment(student_id=student.id, project_id=plan.project_id, date=plan.date)
                 session.add(assessment)
             assessment.status = "done"
             assessment.total_score = 0
@@ -228,7 +239,7 @@ def _run_today(
                 snap = extract_snapshot(_student_repo(student))
                 context["project_files"] = snap.get("files", [])
             else:
-                local = extract_day_activity(_student_repo(student), target_date)
+                local = extract_day_activity(_student_repo(student), plan.date)
                 context["code_diffs"] = local.get("code_diffs", [])
         except Exception as e:
             import logging
@@ -243,7 +254,7 @@ def _run_today(
             select(Assessment).where(
                 Assessment.student_id == student.id,
                 Assessment.project_id == plan.project_id,
-                Assessment.date == target_date,
+                Assessment.date == plan.date,
             )
         ).first()
 
@@ -251,7 +262,7 @@ def _run_today(
             assessment = Assessment(
                 student_id=student.id,
                 project_id=plan.project_id,
-                date=target_date,
+                date=plan.date,
             )
             session.add(assessment)
 
@@ -335,11 +346,13 @@ def _run_today(
 
     session.commit()
 
-    try:
-        send_daily_comments(target_date, session)
-    except Exception as e:
-        import logging
-        logging.warning("邮件发送失败: %s", e)
+    if send_email:
+        for d in sorted({p_.date for _, p_ in pairs}):
+            try:
+                send_daily_comments(d, session)
+            except Exception as e:
+                import logging
+                logging.warning("邮件发送失败 (%s): %s", d, e)
 
     return {
         "success": success_count,
