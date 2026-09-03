@@ -1,6 +1,70 @@
 {% extends "base.html" %}
 {% block title %}项目看板 — 学生 GitHub 日报追踪器{% endblock %}
 {% block content %}
+<style>
+    /* 评测弹窗局部样式（镜像 project_eval.html 设计语言，复用 base.html 全局组件） */
+    #eval-modal fieldset.eval-fieldset {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--card-bg);
+        padding: 1rem 1.25rem 0.25rem;
+        margin: 0;
+        min-width: 0;
+    }
+    #eval-modal fieldset.eval-fieldset legend {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text);
+        padding: 0 0 0.5rem;
+        margin: 0 0 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        border-bottom: 2px solid var(--border);
+    }
+    #eval-modal fieldset.eval-fieldset legend .legend-icon {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.6rem; height: 1.6rem; border-radius: var(--radius-sm);
+        background: #e8f0fe; color: var(--primary); font-size: 0.85rem; flex-shrink: 0;
+    }
+    /* 覆盖 base.html .modal-body label 的 flex 布局，恢复 form-group label 的 block 布局 */
+    #eval-modal .form-group label {
+        display: block;
+        margin-bottom: 0.4rem;
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        font-weight: 500;
+    }
+    #eval-modal .form-group { margin-bottom: 0.85rem; }
+    #eval-modal .form-grid { gap: 0.75rem 1rem; }
+    #eval-modal .form-hint {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-top: 0.3rem;
+        display: block;
+        line-height: 1.4;
+    }
+    /* 快速新增计划行：输入框 + 按钮横向排列 */
+    #eval-modal .quick-plan-row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: stretch;
+    }
+    #eval-modal .quick-plan-row input { flex: 1 1 auto; min-width: 0; width: auto; }
+    #eval-modal .quick-plan-row .btn { flex: 0 0 auto; }
+    /* 启动时间条件显示：display:none 退出网格流，避免空轨道（见 DESIGN.md 5.14） */
+    #eval-modal .run-at-group { display: none; }
+    #eval-modal .run-at-group.is-visible {
+        display: block;
+        animation: runAtReveal 0.25s ease;
+    }
+    @keyframes runAtReveal {
+        from { opacity: 0; transform: translateY(-0.25rem); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
 <div class="page-header">
     <h1>项目看板</h1>
     <button type="button" class="btn btn-primary" id="new-project-btn">＋ 新建项目</button>
@@ -44,38 +108,74 @@
             <button type="button" class="modal-close" id="eval-modal-close">&times;</button>
         </div>
         <div class="modal-body">
-            <label>评测日期
-                <input type="date" id="eval-date-input" value="{{ today }}">
-            </label>
-            <label>评测目标（当日计划）
-                <select id="eval-plan-input">
-                    <option value="">全部计划</option>
-                </select>
-                <span style="font-size:0.75rem;color:var(--text-muted)">选择指定计划作为评测目标；无可选项可先新增计划。</span>
-            </label>
-            <label>新增评测计划
-                <input type="text" id="new-plan-content" placeholder="输入当日计划内容，如：完成流水灯与串口通信">
-                <button type="button" class="btn btn-small" id="new-plan-btn">新增计划</button>
-            </label>
-            <label>评审模式
-                <select id="eval-mode-input">
-                    <option value="diff">当日变更评审（快）</option>
-                    <option value="full">全项目代码审核（深入）</option>
-                </select>
-            </label>
-            <label>范围
-                <select id="eval-scope-input">
-                    <option value="1">仅未测评</option>
-                    <option value="0">全部重新评测</option>
-                </select>
-            </label>
-            <label>抽样人数
-                <input type="number" id="eval-sample-input" min="1" max="200" value="" placeholder="留空=全部">
-            </label>
-            <label>发送邮件
-                <input type="checkbox" id="eval-email-input">
-                <span style="font-size:0.75rem;color:var(--text-muted)">勾选则评测完成后向学生发送评估邮件（默认不发送）</span>
-            </label>
+            <fieldset class="eval-fieldset">
+                <legend><span class="legend-icon">①</span>评测目标</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="eval-date-input">评测日期</label>
+                        <input type="date" id="eval-date-input" value="{{ today }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="eval-plan-input">评测计划</label>
+                        <select id="eval-plan-input">
+                            <option value="">全部计划（不限）</option>
+                        </select>
+                        <span class="form-hint">选择指定计划作为评测目标</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="new-plan-content">快速新增计划</label>
+                    <div class="quick-plan-row">
+                        <input type="text" id="new-plan-content" placeholder="如：完成流水灯与串口通信">
+                        <button type="button" class="btn btn-small btn-primary" id="new-plan-btn">新增</button>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="eval-fieldset">
+                <legend><span class="legend-icon">②</span>运行设置</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="eval-mode-input">评审模式</label>
+                        <select id="eval-mode-input">
+                            <option value="diff">当日变更评审（快）</option>
+                            <option value="full">全项目代码审核（深入）</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="eval-scope-input">评测范围</label>
+                        <select id="eval-scope-input">
+                            <option value="1">仅未测评</option>
+                            <option value="0">全部重新评测</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="eval-sample-input">抽样人数</label>
+                        <input type="number" id="eval-sample-input" min="1" max="200" placeholder="留空=全部">
+                        <span class="form-hint">留空 = 全部学生</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="eval-start-mode-input">启动方式</label>
+                        <select id="eval-start-mode-input">
+                            <option value="now">立即手动开始</option>
+                            <option value="scheduled">指定时间自动启动</option>
+                        </select>
+                    </div>
+                    <div class="form-group run-at-group" id="eval-run-at-group">
+                        <label for="eval-run-at">启动时间</label>
+                        <input type="datetime-local" id="eval-run-at">
+                        <span class="form-hint">默认次日 02:00 · 到点自动补评未完成的学生</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="eval-email-mode-input">邮件方式</label>
+                        <select id="eval-email-mode-input">
+                            <option value="manual">后期手动发送（默认）</option>
+                            <option value="auto">评测完成后自动发送</option>
+                        </select>
+                        <span class="form-hint">邮件只含评语，不含任何分数</span>
+                    </div>
+                </div>
+            </fieldset>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn" id="eval-modal-cancel">取消</button>
@@ -199,12 +299,30 @@
             })
             .catch(function () { /* 计划加载失败不影响评测 */ });
     }
+    function defaultRunAt() {
+        // 次日 02:00（本地时区），格式化为 datetime-local 所需的 YYYY-MM-DDTHH:MM
+        var base = new Date();
+        base.setDate(base.getDate() + 1);
+        base.setHours(2, 0, 0, 0);
+        var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+        return base.getFullYear() + "-" + pad(base.getMonth() + 1) + "-" + pad(base.getDate()) +
+            "T" + pad(base.getHours()) + ":" + pad(base.getMinutes());
+    }
+    function syncStartMode() {
+        var scheduled = document.getElementById("eval-start-mode-input").value === "scheduled";
+        document.getElementById("eval-run-at-group").classList.toggle("is-visible", scheduled);
+        var input = document.getElementById("eval-run-at");
+        if (scheduled && !input.value) input.value = defaultRunAt();
+    }
     function openEvalModal(name, pid, btn, box) {
         document.getElementById("eval-modal-name").textContent = name;
         document.getElementById("eval-date-input").value = "{{ today }}";
         activePid = pid; activeBtn = btn; activeBox = box;
         loadPlans(pid);
         document.getElementById("new-plan-content").value = "";
+        document.getElementById("eval-start-mode-input").value = "now";
+        document.getElementById("eval-run-at").value = "";
+        syncStartMode();
         if (evalModal) evalModal.hidden = false;
     }
     function closeEvalModal() { if (evalModal) evalModal.hidden = true; }
@@ -231,6 +349,7 @@
         evalModal.addEventListener("click", function (e) {
             if (e.target === evalModal) closeEvalModal();
         });
+        document.getElementById("eval-start-mode-input").addEventListener("change", syncStartMode);
     }
     document.addEventListener("keydown", function (e) {
         if (e.key !== "Escape") return;
@@ -253,7 +372,13 @@
         fd.append("date", document.getElementById("eval-date-input").value);
         fd.append("eval_mode", document.getElementById("eval-mode-input").value);
         fd.append("only_missing", document.getElementById("eval-scope-input").value);
-        fd.append("send_email", document.getElementById("eval-email-input").checked ? "1" : "0");
+        fd.append("send_email", document.getElementById("eval-email-mode-input").value === "auto" ? "1" : "0");
+        var startMode = document.getElementById("eval-start-mode-input").value;
+        fd.append("start_mode", startMode);
+        if (startMode === "scheduled") {
+            var runAt = document.getElementById("eval-run-at").value.trim();
+            if (runAt) fd.append("run_at", runAt);
+        }
         const selPlan = document.getElementById("eval-plan-input").value;
         if (selPlan) fd.append("plan_id", selPlan);
         const ss = document.getElementById("eval-sample-input").value.trim();
@@ -273,6 +398,12 @@
             })
             .then(function (d) {
                 if (!d) return;
+                if (d.scheduled) {
+                    bar.style.width = "100%";
+                    textEl.textContent = "✅ 已创建定时评测计划，将于 " + d.run_at.replace("T", " ") + " 自动开始（" +
+                        (d.auto_send_email ? "完成后自动发送评语邮件" : "评测完成后需手动发送邮件") + "）";
+                    return;
+                }
                 var jobId = d.job_id;
                 btn.disabled = true;
                 btn.innerText = "评测中…";

@@ -1365,3 +1365,98 @@ class TestScheduledEvalCreation:
         assert resp.json()["job_id"] == "job-1"
         assert mock_job.call_count == 1
         assert db_session.exec(select(EvalSchedule)).all() == []
+
+
+class TestEvalScheduleCancel:
+    """POST /eval-schedules/{id}/cancel — 取消定时评测计划"""
+
+    def test_cancel_pending_returns_cancelled_true(self, app, db_session, seed_data):
+        from app.models import EvalSchedule
+        from datetime import datetime
+        sched = EvalSchedule(
+            target_date=date(2026, 8, 21),
+            eval_mode="diff",
+            project_id=seed_data['p1'].id,
+            run_at=datetime(2026, 8, 25, 2, 0),
+            status="pending",
+        )
+        db_session.add(sched)
+        db_session.commit()
+        db_session.refresh(sched)
+        sid = sched.id
+
+        resp = app.post(f"/eval-schedules/{sid}/cancel")
+        assert resp.status_code == 200
+        assert resp.json() == {"cancelled": True}
+
+        with Session(db_session.bind) as verify:
+            assert verify.get(EvalSchedule, sid).status == "cancelled"
+
+    def test_cancel_nonexistent_returns_404(self, app):
+        resp = app.post("/eval-schedules/9999/cancel")
+        assert resp.status_code == 404
+
+    def test_cancel_already_done_returns_409(self, app, db_session, seed_data):
+        from app.models import EvalSchedule
+        from datetime import datetime
+        sched = EvalSchedule(
+            target_date=date(2026, 8, 21),
+            eval_mode="diff",
+            project_id=seed_data['p1'].id,
+            run_at=datetime(2026, 8, 25, 2, 0),
+            status="done",
+        )
+        db_session.add(sched)
+        db_session.commit()
+        db_session.refresh(sched)
+        resp = app.post(f"/eval-schedules/{sched.id}/cancel")
+        assert resp.status_code == 409
+
+
+class TestProjectEvalPageSchedules:
+    """project_eval_page 传入 schedules 上下文并在页面渲染待执行计划"""
+
+    def test_pending_schedule_renders_in_html(self, app, db_session, seed_data):
+        from app.models import EvalSchedule
+        from datetime import datetime
+        sched = EvalSchedule(
+            target_date=date(2026, 8, 21),
+            eval_mode="diff",
+            project_id=seed_data['p1'].id,
+            plan_id=seed_data['plan_all'].id,
+            run_at=datetime(2026, 8, 25, 2, 0),
+            auto_send_email=True,
+            status="pending",
+        )
+        db_session.add(sched)
+        db_session.commit()
+
+        resp = app.get(f"/projects/{seed_data['p1'].id}/eval")
+        assert resp.status_code == 200
+        assert "待执行计划" in resp.text
+        assert "08-25 02:00" in resp.text
+        assert "完成登录模块" in resp.text
+        assert "自动发邮件" in resp.text
+        assert "取消" in resp.text
+        assert 'data-id="' + str(sched.id) + '"' in resp.text
+
+    def test_empty_schedules_shows_empty_state(self, app, seed_data):
+        resp = app.get(f"/projects/{seed_data['p1'].id}/eval")
+        assert resp.status_code == 200
+        assert "暂无定时评测计划" in resp.text
+
+    def test_pending_count_badge_in_header(self, app, db_session, seed_data):
+        from app.models import EvalSchedule
+        from datetime import datetime
+        for i in range(2):
+            db_session.add(EvalSchedule(
+                target_date=date(2026, 8, 21),
+                eval_mode="diff",
+                project_id=seed_data['p1'].id,
+                run_at=datetime(2026, 8, 25 + i, 2, 0),
+                status="pending",
+            ))
+        db_session.commit()
+        resp = app.get(f"/projects/{seed_data['p1'].id}/eval")
+        assert resp.status_code == 200
+        assert "2 项待执行" in resp.text

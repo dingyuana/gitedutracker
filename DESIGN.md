@@ -220,6 +220,7 @@
 
 - **结构**：`.modal-overlay`（fixed 全屏遮罩 `rgba(0,0,0,0.45)` 居中，`overflow-y:auto`）→ `.modal`（白卡、`--shadow-hover`、max-width 460px、`max-height: calc(100vh - 2rem)` 纵向 flex）→ `.modal-header`（标题 + `.modal-close` ✕）/ `.modal-body`（表单 labels）/ `.modal-footer`（取消 + 确认）。
 - **变体**：`.modal-wide` 720px / `.modal-full` 960px（已定义，当前页面未使用）。
+- **评测弹窗变体**：`#eval-modal` 内复用 `fieldset.eval-fieldset` + `legend` + `.legend-icon` + `.form-hint` + `.run-at-group`（见 5.14），以页面级 `<style>` 块 scoped 到 `#eval-modal` 定义，镜像 project_eval.html 设计语言；含「启动方式」select + 条件「启动时间」datetime-local（`display:none` + `.is-visible` 切换，非 `max-height` 收起）。
 - **行为**：JS 控制 `hidden` 属性显隐；点遮罩、点 ✕、Esc 均可关闭；表单提交后走 303 重定向刷新。
 - **可达性**：无 role="dialog"/aria-modal/焦点圈定（**已知缺口**，见 Section 8）。
 
@@ -248,11 +249,18 @@
 
 这些组件只在该页使用（页面级 `<style>` 块定义，未进 base.html）：
 
-- **`.eval-grid`**：非对称双栏布局（`minmax(300px,1fr) minmax(380px,1.4fr)`），820px 以下单列。
-- **`.eval-block`**：浅灰底 `#fafbfc` 信息块（`.card` 同级），用于放置「新增计划」「选择评测目标」。
-- **`.step-num`**：圆形步骤号（白字 primary 底 1.6rem 圆），表示评测步骤 1/2。
-- **`.quick-add`/`.quick-go`**：紧凑两栏表单与操作行（添加计划按钮 + 管理入口）。
-- **`.plan-pick`**：可滚动的计划单选列表（max-height 300px）— 每项 `.plan-meta`（日期加粗 primary + 内容 + `small` 对象）+ `.plan-date`；hover primary 边框浅蓝底，`:has(input:checked)` 选中项 `#e8f0fe` 底；radio 用 `accent-color: var(--primary)`；无计划时 `.plan-none` 灰斜体占位。
+- **`.eval-layout`**：主内容 + 右侧栏布局（`minmax(0,1fr) 320px`），1180px 以下右栏降为下方堆叠，820px 以下完全单列。主操作区在左，辅助信息（待执行计划 / 新增计划）在右。
+- **`fieldset.eval-fieldset`**：白卡字段集，承载「① 评测内容」「② 运行方式」两组。`legend` 带 `.legend-icon`（1.6rem 圆角方块、`#e8f0fe` 底 primary 字）+ 2px 底边分隔。取代旧的 `.eval-block` + `.step-num` 圆形步骤号——原设计把「新增计划」误编为步骤 ①，暗示了并不存在的必经顺序。
+- **`.form-grid`**：`auto-fit minmax(200px,1fr)` 自适应控件网格，替代旧的固定两栏 `.quick-add`。
+- **`.form-hint`**：控件下方 0.8rem muted 提示文字。**hint 一律不写进 `label`**（旧版「抽样人数（留空 = 全部学生）」的写法已废弃）。
+- **`.plan-pick`**：可滚动计划单选列表（max-height 260px）— 每项 `.plan-meta`（日期加粗 primary + 内容 + `small` 对象）+ `.plan-date`；hover primary 边框浅蓝底，`:has(input:checked)` 选中项 `#e8f0fe` 底；无计划时 `.plan-none` 灰斜体占位。
+  - **必须显式写 `input[type=radio] { width:auto; flex:0 0 auto }`**：base.html 的 `.form-group input { width:100% }` 会把 radio 撑满整行、把文案压成一列单字。`.plan-meta` 配 `flex:1 1 auto; min-width:0` 承接剩余宽度。
+  - 卡片高度可变，固定 max-height 必然截断某张卡；用 `scroll-snap-type: y proximity` + 子项 `scroll-snap-align: start` 让滚动停在卡片边界，配合 `.is-scrollable` 底部渐隐遮罩与 `.plan-pick-foot` 的「共 N 条」计数，使截断读作「可滚动」而非「渲染坏了」。
+  - `.is-scrollable` 由 JS 按「溢出 **且** 未滚到底」双条件切换；滚到底须撤掉遮罩，否则会暗示存在不存在的内容。
+- **`.run-at-group`**：条件显示的启动时间组。**必须用 `display:none` 收起**（配 `@keyframes runAtReveal` 展开动画）——它是 grid 单元格，仅用 `max-height:0` 收起会留下一条空网格轨道，在「运行方式」中间撕出可见空洞。
+- **`.eval-action-wrap` / `.eval-action-bar`**：`position: sticky; bottom: 0` 主操作栏，保证「▶ 开始评测」在任何滚动位置都可见（旧版该按钮在 1440×900 下位于折叠线以下）。
+- **`.rail-card`**：右栏卡片（待执行计划 / 新增工作计划折叠卡）。
+- **`.sched-item`**：待执行计划条目 — 左缘 3px primary 色条 + `.sched-badge`（状态徽标）+ 运行时间加粗 + 元信息行（目标日期 · 模式 · 抽样 · 邮件策略）+ 右上「取消」`btn-danger btn-small`。空态用 `.empty`。计数徽标同时出现在页面标题旁与右栏卡片头。
 - **`.progress-zone`**：虚线框（`hidden` 默认隐藏）内进度条 + `.progress-label` 文案；评测异步轮询状态实时填充。
 
 ---
@@ -339,7 +347,8 @@
 | `POST /projects/{id}/assessments/delete`、`/assessments/{aid}/delete` | 303 | 删除整日/单条记录 |
 | `GET /projects/{id}/edit` / `POST` | `project_edit.html` | 编辑项目 |
 | `POST /projects/{id}/complete` / `reopen` / `delete` | 303 | 项目状态/删除 |
-| `GET /projects/{id}/eval` | `project_eval.html` | 评测面板：新增计划 + 计划选择 + 模式/范围/抽样 + 实时进度 |
+| `GET /projects/{id}/eval` | `project_eval.html` | 评测面板：评测内容（计划选择 + 模式/范围/抽样）+ 运行方式（立即/定时 + 邮件策略）+ 待执行计划列表 + 实时进度；新增计划降级为右栏折叠卡 |
+| `POST /eval-schedules/{id}/cancel` | — (JSON) | 取消待执行的定时评测计划，返回 `{"cancelled": true}`；不存在 404，非 pending 409 |
 | `POST /projects/{id}/run-eval` | JSON `{job_id}`；409 冲突 | 启动评测（并发锁） |
 | `GET /eval-progress/{job_id}` | JSON 进度 | 轮询 |
 | `GET /plans` | `plans.html` | 全量计划 + 新增 |

@@ -6,12 +6,15 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResp
 from sqlmodel import Session, select, delete
 
 from app.database import get_session
-from app.models import Student, Project, DailyPlan, GithubActivity, Assessment, ScoringConfig
+from app.models import (
+    Student, Project, DailyPlan, GithubActivity, Assessment, ScoringConfig,
+    EvalSchedule,
+)
 from app.utils.export import export_daily, export_project_assessments
 from app.services.import_service import import_students
 from app.services.pipeline import run_today
 from app.services.email_service import send_daily_comments
-from app.services.schedule_service import create_schedule
+from app.services.schedule_service import create_schedule, cancel_schedule
 from app.services.eval_jobs import start_eval_job, is_running
 from app.middleware.auth import require_auth, login_endpoint, security
 
@@ -383,6 +386,38 @@ def _load_project_ctx(session, project_id):
         raise HTTPException(status_code=404, detail="项目不存在")
     students = session.exec(select(Student).where(Student.project_id == project_id)).all()
     return project, students
+
+
+def _load_project_schedules(session, project_id, limit=5):
+    """加载项目下待执行 + 近期已完成的定时评测计划，解析 plan_id → 计划内容。"""
+    rows = session.exec(
+        select(EvalSchedule)
+        .where(EvalSchedule.project_id == project_id)
+        .order_by(EvalSchedule.run_at.desc())
+        .limit(limit * 2)
+    ).all()
+    pending = sorted((s for s in rows if s.status == "pending"), key=lambda s: s.run_at)
+    history = [s for s in rows if s.status in ("done", "failed")][:max(0, limit - len(pending))]
+    combined = pending + history
+    plan_ids = {s.plan_id for s in combined if s.plan_id}
+    plan_map = {}
+    if plan_ids:
+        plan_map = {
+            p.id: p
+            for p in session.exec(select(DailyPlan).where(DailyPlan.id.in_(plan_ids))).all()
+        }
+    return [{
+        "id": s.id,
+        "status": s.status,
+        "run_at": s.run_at,
+        "target_date": s.target_date,
+        "eval_mode": s.eval_mode,
+        "only_missing": s.only_missing,
+        "sample_size": s.sample_size,
+        "auto_send_email": s.auto_send_email,
+        "plan_content": plan_map[s.plan_id].content
+        if (s.plan_id and s.plan_id in plan_map) else None,
+    } for s in combined]
 
 
 def _load_charts(session, project_id):
@@ -906,9 +941,11 @@ def project_eval_page(
         session.exec(select(DailyPlan).where(DailyPlan.project_id == project_id)).all(),
         key=lambda p: p.date, reverse=True,
     )
+    schedules = _load_project_schedules(session, project_id)
     return request.app.state.templates.TemplateResponse(request, "project_eval.html", {
         "project": project, "students": students, "plans": plans,
-        "today": _date.today(),
+        "today": _date.today(), "schedules": schedules,
+        "pending_count": sum(1 for s in schedules if s["status"] == "pending"),
     })
 
 
@@ -983,6 +1020,20 @@ def run_project_eval(
         send_email=auto_send,
     )
     return JSONResponse({"job_id": job_id})
+
+
+@router.post("/eval-schedules/{schedule_id}/cancel")
+def cancel_eval_schedule(
+    schedule_id: int,
+    auth_check=Depends(require_auth),
+    session: Session = Depends(get_session),
+):
+    ok = cancel_schedule(session, schedule_id)
+    if not ok:
+        if session.get(EvalSchedule, schedule_id) is None:
+            raise HTTPException(status_code=404, detail="定时评测计划不存在")
+        raise HTTPException(status_code=409, detail="该计划无法取消（可能已执行或已取消）")
+    return JSONResponse({"cancelled": True})
 
 
 @router.get("/projects/{project_id}/plans")
